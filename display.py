@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+
+import textwrap
+
+import board
+import digitalio
+import adafruit_ssd1306
+
+from PIL import Image, ImageDraw, ImageFont
+
+
+class Display:
+    """
+    Aansturing van een SSD1306 OLED-display via SPI.
+
+    Aansluitingen:
+        OLED RST  -> GPIO 16
+        OLED CS   -> GPIO 5
+        OLED DC   -> GPIO 6
+        OLED CLK  -> SPI SCLK
+        OLED DATA -> SPI MOSI
+
+    Schermresolutie:
+        128 x 64 pixels
+    """
+
+    WIDTH = 128
+    HEIGHT = 64
+
+    def __init__(
+        self,
+        reset_pin=board.D16,
+        cs_pin=board.D5,
+        dc_pin=board.D6
+    ):
+        # Besturingspinnen
+        self.oled_reset = digitalio.DigitalInOut(reset_pin)
+        self.oled_cs = digitalio.DigitalInOut(cs_pin)
+        self.oled_dc = digitalio.DigitalInOut(dc_pin)
+
+        # Hardware SPI-interface van de Raspberry Pi
+        self.spi = board.SPI()
+
+        # SSD1306 initialiseren via SPI
+        self.oled = adafruit_ssd1306.SSD1306_SPI(
+            self.WIDTH,
+            self.HEIGHT,
+            self.spi,
+            self.oled_dc,
+            self.oled_reset,
+            self.oled_cs
+        )
+
+        self.font = ImageFont.load_default()
+        self._closed = False
+
+        self.clear()
+
+    def clear(self):
+        """Wis het volledige OLED-scherm."""
+
+        if self._closed:
+            return
+
+        self.oled.fill(0)
+        self.oled.show()
+
+    def toon_tekst(self, titel, tekst):
+        """
+        Toon een titel en tekst op het OLED-display.
+
+        Voorbeeld:
+            display.toon_tekst(
+                "SMART VAULT",
+                "Systeem gereed"
+            )
+        """
+
+        if self._closed:
+            return
+
+        # Nieuw zwart beeld van 128 x 64 pixels
+        image = Image.new(
+            "1",
+            (self.oled.width, self.oled.height),
+            0
+        )
+
+        draw = ImageDraw.Draw(image)
+
+        # Titel
+        draw.text(
+            (2, 1),
+            str(titel),
+            font=self.font,
+            fill=255
+        )
+
+        # Scheidingslijn
+        draw.line(
+            (0, 13, self.oled.width - 1, 13),
+            fill=255
+        )
+
+        # Tekst afbreken over meerdere regels
+        regels = textwrap.wrap(
+            str(tekst),
+            width=20
+        )
+
+        y = 18
+
+        for regel in regels[:4]:
+            draw.text(
+                (2, y),
+                regel,
+                font=self.font,
+                fill=255
+            )
+
+            y += 11
+
+        self.oled.image(image)
+        self.oled.show()
+
+    def toon_sensorwaarden(self, temperatuur, licht):
+        """
+        Toon temperatuur en lichtsterkte.
+
+        Args:
+            temperatuur: temperatuur in graden Celsius
+            licht: lichtsterkte in lux
+        """
+
+        if self._closed:
+            return
+
+        image = Image.new(
+            "1",
+            (self.oled.width, self.oled.height),
+            0
+        )
+
+        draw = ImageDraw.Draw(image)
+
+        # Titel
+        draw.text(
+            (2, 1),
+            "SMART VAULT",
+            font=self.font,
+            fill=255
+        )
+
+        draw.line(
+            (0, 13, self.oled.width - 1, 13),
+            fill=255
+        )
+
+        # Sensorwaarden
+        draw.text(
+            (2, 21),
+            f"Temp: {temperatuur:.1f} C",
+            font=self.font,
+            fill=255
+        )
+
+        draw.text(
+            (2, 36),
+            f"Licht: {licht:.1f} lux",
+            font=self.font,
+            fill=255
+        )
+
+        draw.text(
+            (2, 52),
+            "Status: actief",
+            font=self.font,
+            fill=255
+        )
+
+        self.oled.image(image)
+        self.oled.show()
+
+    def toon_status(self, status):
+        """Toon een Smart Vault-statusbericht."""
+
+        self.toon_tekst(
+            "SMART VAULT",
+            status
+        )
+
+    def close(self):
+        """Wis het scherm en geef de GPIO-resources vrij."""
+
+        if self._closed:
+            return
+
+        self.clear()
+
+        self.oled_cs.deinit()
+        self.oled_dc.deinit()
+        self.oled_reset.deinit()
+
+        self._closed = True
+
+        print("OLED-display afgesloten.")
+
+
+# Hiermee kan display.py ook afzonderlijk worden getest
+if __name__ == "__main__":
+    import time
+
+    display = Display()
+
+    try:
+        print("OLED-test gestart")
+
+        display.toon_status("Systeem starten...")
+        time.sleep(2)
+
+        display.toon_sensorwaarden(
+            temperatuur=22.5,
+            licht=245.8
+        )
+        time.sleep(4)
+
+        display.toon_status("Test geslaagd")
+        time.sleep(2)
+
+    except KeyboardInterrupt:
+        print("\nOLED-test gestopt.")
+
+    finally:
+        display.close()
