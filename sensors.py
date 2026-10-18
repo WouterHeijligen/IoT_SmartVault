@@ -5,7 +5,6 @@ import board
 import busio
 import digitalio
 import paho.mqtt.client as mqtt
-
 import adafruit_mcp3xxx.mcp3008 as MCP
 from adafruit_mcp3xxx.analog_in import AnalogIn
 
@@ -29,6 +28,9 @@ class Sensors:
         # LM35 connected to channel 1
         self.lm35_channel = AnalogIn(self.mcp, MCP.P1)
 
+        # 10-k potentiometer connecter to channel 0
+        self.pot_channel = AnalogIn(self.mcp, MCP.P0)
+
         # ============================================================
         # BH1750 LIGHT SENSOR - I2C
         # ============================================================
@@ -42,6 +44,14 @@ class Sensors:
         self.BH1750_COMMAND_HIGH_RES = bytearray([0x10])
 
         print("Sensors initialized")
+
+    def raw_to_digit(self, raw_10bit: int) -> int:
+        """
+        Zet de 10-bit ADC-waarde (0..1023) om naar een cijfer van 0 t/m 9.
+        Door gehele deling door 102.4 krijgen we exact 10 gelijke intervallen.
+        """
+        digit = (raw_10bit * 10) // 1024
+        return min(9, max(0, digit))
 
     def lees_temperatuur(self):
         """
@@ -84,10 +94,22 @@ class Sensors:
 
         return licht
 
+    def lees_potentiometer(self):
+        """
+        Lees de waarde van de 10-k potentiometer uit.
+
+        Returns:
+            float: potentiometerwaarde (0..1023)
+        """
+
+        raw_value = self.pot_channel.value
+        return raw_value
+
     def lees_alles(self):
         return {
             "temperatuur": self.lees_temperatuur(),
-            "licht": self.lees_licht()
+            "licht": self.lees_licht(),
+            "potentiometer": self.lees_potentiometer()
         }
 
     def close(self):

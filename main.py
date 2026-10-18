@@ -54,11 +54,15 @@ def main():
             print(
                 f"Licht: {lichtwaarde}"
             )
+            potentiometer = metingen["potentiometer"]
+            print(
+                f"Potentiometer: {potentiometer}"
+            )
 
             # Toon op OLED
             display.toon_tekst(
                 "SENSOREN",
-                f"T:{temperatuur:.1f} L:{lichtwaarde:.0f}"
+                f"T:{temperatuur:.1f} L:{lichtwaarde:.0f} P:{potentiometer}"
             )
 
             # Naar MQTT
