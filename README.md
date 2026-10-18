@@ -7,7 +7,8 @@ The documentation site covers the current implementation, Raspberry Pi setup,
 hardware pin assignments, and known limitations:
 [Smart Vault documentation](https://wouterheijligen.github.io/IoT_SmartVault/).
 The site becomes available after GitHub Pages is enabled and the first deployment succeeds.
-The included connection diagram is an **outdated draft**, not a verified wiring guide.
+The latest connection diagram is included, with remaining code/wiring differences
+listed on the hardware page. Physical wiring has not been verified.
 
 To preview locally, run `python -m http.server 8000 --bind 127.0.0.1 --directory docs`
 and open <http://127.0.0.1:8000>.

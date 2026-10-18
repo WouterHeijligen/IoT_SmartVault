@@ -18,9 +18,9 @@
   </header>
   <main>
     <h1>Hardware and connections</h1>
-    <aside class="notice"><strong>Draft, not a verified wiring guide.</strong>
-      The diagram below comes from the team project folder and is not fully up to
-      date. The table records the current Python configuration, not a physical
+    <aside class="notice"><strong>Latest diagram, with differences still to reconcile.</strong>
+      The diagram below is the 18 October 2026 update from the team project folder.
+      The table records the current Python configuration, not a physical
       inspection. Verify component datasheets, voltage levels, and wiring before powering the circuit.</aside>
     <h2>Pin map from the current code</h2>
     <p>GPIO numbers use <strong>BCM numbering</strong>, not physical header positions.
@@ -44,25 +44,34 @@
     </div>
     <h2>Known diagram differences</h2>
     <ul>
-      <li>The draft shows an I2C OLED; the code uses an SPI OLED.</li>
-      <li>The draft uses GPIO 8 for MCP3008 chip select; the code uses GPIO 25.</li>
-      <li>The draft uses GPIO 19 for the blue LED; the code uses GPIO 26.</li>
+      <li>The updated MCP3008 chip-select connection uses GPIO 25, matching the code.
+        The central SPI bus list still mentions GPIO 8 / CE0.</li>
+      <li>The OLED section shows data on GPIO 10 / MOSI and clock on GPIO 9 / MISO,
+        with no chip select. The current SPI driver uses GPIO 11 / SCLK for clock,
+        GPIO 10 / MOSI for data, and GPIO 5 for chip select, alongside reset on
+        GPIO 16 and data-command on GPIO 6. The diagram's <code>0x3C</code>
+        label is an I2C address, not an SPI address. Confirm the actual OLED variant
+        before changing its wiring or driver.</li>
+      <li>The diagram uses GPIO 19 for the blue LED; the code uses GPIO 26.</li>
       <li>The Pico / HC-SR04 perimeter section describes planned functionality,
         not firmware present in this repository.</li>
     </ul>
-    <h2>Connection diagram (outdated draft)</h2>
-    <p><a href="assets/connection-draft.png">Open the full-size draft image</a>
-      or <a href="assets/connection-draft.drawio">download its editable draw.io source</a>.
-      Both are reference snapshots; update them together after reviewing the wiring.</p>
+    <h2>Latest connection diagram</h2>
+    <p><a href="assets/connection-schema.png">Open the full-size diagram</a>
+      or <a href="assets/connection-schema.drawio">download its editable draw.io source</a>.
+      Both files were copied from the latest team project schema; update them together
+      after reviewing the wiring.</p>
     <figure>
-      <a href="assets/connection-draft.png"><img src="assets/connection-draft.png"
-        alt="Outdated Smart Vault connection draft showing the Pico perimeter node, Pi sensors, display, relay, stepper, and RGB LED. See the pin map above for the current code configuration."></a>
-      <figcaption>Outdated design snapshot. Do not wire the circuit from this image alone.</figcaption>
+      <a href="assets/connection-schema.png"><img src="assets/connection-schema.png"
+        alt="Latest Smart Vault connection diagram showing the Pico perimeter node, Pi sensors, display, relay, stepper, and RGB LED. See the differences above before using it as a wiring reference."></a>
+      <figcaption>Updated 18 October 2026. Physical wiring has not been verified;
+        see the remaining differences above.</figcaption>
     </figure>
     <h2>Electrical checks still required</h2>
     <p>Use 3.3 V-compatible GPIO signals and verify the MCP3008 supply/reference,
       sensor supply requirements, common ground, and LED resistors against the actual
-      components. In particular, do not assume the draft's LM35 supply label is correct.
+      components. In particular, verify the diagram's 3.3 V LM35 supply label
+      against the exact sensor's rated supply range.
       Motors must use a suitable driver, not GPIO power. A future HC-SR04 connection
       needs appropriate level shifting on its echo signal.</p>
   </main>
