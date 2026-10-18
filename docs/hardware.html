@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Hardware</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Main navigation">
+      <a href="index.html">Overview</a>
+      <a href="hardware.html" aria-current="page">Hardware</a>
+      <a href="setup.html">Setup</a>
+      <a href="development.html">Development</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Hardware and connections</h1>
+    <aside class="notice"><strong>Draft, not a verified wiring guide.</strong>
+      The diagram below comes from the team project folder and is not fully up to
+      date. The table records the current Python configuration, not a physical
+      inspection. Verify component datasheets, voltage levels, and wiring before powering the circuit.</aside>
+    <h2>Pin map from the current code</h2>
+    <p>GPIO numbers use <strong>BCM numbering</strong>, not physical header positions.
+      The OLED and MCP3008 share SPI clock/data lines but have separate chip-select pins.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Device / signal</th><th>BCM GPIO or channel</th><th>Source module</th></tr></thead>
+        <tbody>
+          <tr><td>Button, active-low with pull-up</td><td>4</td><td><code>main.py</code></td></tr>
+          <tr><td>SPI clock / MOSI / MISO</td><td>11 / 10 / 9</td><td><code>sensors.py</code>, <code>display.py</code></td></tr>
+          <tr><td>MCP3008 chip select</td><td>25</td><td><code>sensors.py</code></td></tr>
+          <tr><td>Potentiometer wiper</td><td>MCP3008 CH0</td><td><code>sensors.py</code></td></tr>
+          <tr><td>LM35 output</td><td>MCP3008 CH1</td><td><code>sensors.py</code></td></tr>
+          <tr><td>BH1750 SDA / SCL</td><td>2 / 3, I2C address <code>0x23</code></td><td><code>sensors.py</code></td></tr>
+          <tr><td>SSD1306 reset / chip select / data-command</td><td>16 / 5 / 6, SPI, 128 x 64</td><td><code>display.py</code></td></tr>
+          <tr><td>RGB LED red / green / blue</td><td>12 / 13 / 26, PWM</td><td><code>zwaailicht.py</code></td></tr>
+          <tr><td>Relay control, active-low</td><td>24</td><td><code>vault_lock.py</code></td></tr>
+          <tr><td>Stepper driver IN1 / IN2 / IN3 / IN4</td><td>17 / 27 / 22 / 23</td><td><code>vault_lock.py</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h2>Known diagram differences</h2>
+    <ul>
+      <li>The draft shows an I2C OLED; the code uses an SPI OLED.</li>
+      <li>The draft uses GPIO 8 for MCP3008 chip select; the code uses GPIO 25.</li>
+      <li>The draft uses GPIO 19 for the blue LED; the code uses GPIO 26.</li>
+      <li>The Pico / HC-SR04 perimeter section describes planned functionality,
+        not firmware present in this repository.</li>
+    </ul>
+    <h2>Connection diagram (outdated draft)</h2>
+    <p><a href="assets/connection-draft.png">Open the full-size draft image</a>
+      or <a href="assets/connection-draft.drawio">download its editable draw.io source</a>.
+      Both are reference snapshots; update them together after reviewing the wiring.</p>
+    <figure>
+      <a href="assets/connection-draft.png"><img src="assets/connection-draft.png"
+        alt="Outdated Smart Vault connection draft showing the Pico perimeter node, Pi sensors, display, relay, stepper, and RGB LED. See the pin map above for the current code configuration."></a>
+      <figcaption>Outdated design snapshot. Do not wire the circuit from this image alone.</figcaption>
+    </figure>
+    <h2>Electrical checks still required</h2>
+    <p>Use 3.3 V-compatible GPIO signals and verify the MCP3008 supply/reference,
+      sensor supply requirements, common ground, and LED resistors against the actual
+      components. In particular, do not assume the draft's LM35 supply label is correct.
+      Motors must use a suitable driver, not GPIO power. A future HC-SR04 connection
+      needs appropriate level shifting on its echo signal.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
+</body>
+</html>

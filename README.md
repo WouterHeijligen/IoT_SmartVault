@@ -1,6 +1,23 @@
 # IoT_SmartVault
 IoT Smart Vault Project
 
+## Documentation
+
+The documentation site covers the current implementation, Raspberry Pi setup,
+hardware pin assignments, and known limitations:
+[Smart Vault documentation](https://wouterheijligen.github.io/IoT_SmartVault/).
+The site becomes available after GitHub Pages is enabled and the first deployment succeeds.
+The included connection diagram is an **outdated draft**, not a verified wiring guide.
+
+To preview locally, run `python -m http.server 8000 --bind 127.0.0.1 --directory docs`
+and open <http://127.0.0.1:8000>.
+Check the documentation with `python -m unittest discover -s tests -p "test_documentation.py"`.
+
+In GitHub repository **Settings > Pages**, select **GitHub Actions** as the source.
+The Documentation workflow checks pull requests targeting `master` and publishes
+only after a push/merge to `master` (or a manual run on `master`).
+See [documentation development](docs/development.html) for details.
+
 ## Installation
 
 ### 1. Create a Python virtual environment

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Development</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Main navigation">
+      <a href="index.html">Overview</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html">Setup</a>
+      <a href="development.html" aria-current="page">Development</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Documentation and development</h1>
+    <h2>Source layout</h2>
+    <p><code>main.py</code> orchestrates the button-driven demo.
+      <code>sensors.py</code>, <code>display.py</code>, and <code>zwaailicht.py</code>
+      handle readings and feedback. <code>mqtt_client.py</code> handles ThingSpeak;
+      <code>vault_lock.py</code> contains relay/stepper control.
+      <code>voice.py</code> is currently a placeholder. The <code>model-en/</code>
+      and <code>model-nl/</code> folders contain speech model assets, but the voice
+      class does not load them yet.</p>
+    <h2>Edit and preview the site</h2>
+    <p>The site is plain HTML and CSS in <code>docs/</code>: no theme, generator,
+      or package installation is required. Use relative links so the site works
+      under the repository's GitHub Pages URL.</p>
+    <p>From the repository root:</p>
+    <pre><code>python -m unittest discover -s tests -p "test_documentation.py"
+python -m http.server 8000 --bind 127.0.0.1 --directory docs</code></pre>
+    <p>Open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> to preview.
+      Stop the server with <kbd>Ctrl+C</kbd>. The checks verify page metadata,
+      local links, fragment targets, and image/style references without accessing GPIO
+      or connecting to ThingSpeak.</p>
+    <h2>Publishing with GitHub Actions</h2>
+    <ol>
+      <li>In the repository settings, open <strong>Pages</strong> and set
+        <strong>Build and deployment / Source</strong> to <strong>GitHub Actions</strong>.
+        A repository administrator must do this once.</li>
+      <li>Open a pull request targeting <code>master</code>. The
+        <strong>Documentation</strong> workflow checks the site and packages a Pages artifact;
+        it does not publish the PR or provide a hosted preview.</li>
+      <li>Merging into or pushing to <code>master</code> runs the same checks and
+        deploys the artifact to the <code>github-pages</code> environment.</li>
+    </ol>
+    <p>After the first successful deployment, the site should be available at
+      <a href="https://wouterheijligen.github.io/IoT_SmartVault/">wouterheijligen.github.io/IoT_SmartVault/</a>.
+      The deployment job reports the actual URL. A manual run is also available
+      in Actions; only a run on <code>master</code> can publish.</p>
+    <p>Pull requests run with read-only repository permissions. Only the deployment
+      job requests Pages write access and an identity token. If the
+      <code>github-pages</code> environment has branch restrictions, allow
+      <code>master</code>; any configured approval rules still apply.</p>
+    <h2>Keeping the wiring documentation current</h2>
+    <p>Edit <code>docs/assets/connection-draft.drawio</code> using draw.io / diagrams.net
+      and export the matching PNG to <code>docs/assets/connection-draft.png</code>.
+      Update the hardware table when GPIO assignments change. Keep the draft warning
+      until the diagram, code, and physical wiring have all been reconciled.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
+</body>
+</html>
