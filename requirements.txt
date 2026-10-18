@@ -1,0 +1,9 @@
+gpiozero
+adafruit-blinka
+adafruit-circuitpython-ssd1306
+adafruit-circuitpython-mcp3xxx
+Pillow
+paho-mqtt
+python-dotenv
+vosk
+sounddevice
