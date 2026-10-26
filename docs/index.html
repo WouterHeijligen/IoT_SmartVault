@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Smart Vault student project: Raspberry Pi sensors, local display, and ThingSpeak telemetry.">
+  <title>Smart Vault | Overview</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Main navigation">
+      <a href="index.html" aria-current="page">Overview</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html">Setup</a>
+      <a href="development.html">Development</a>
+    </nav>
+  </header>
+  <main>
+    <p class="eyebrow">IoT Essentials / Team project</p>
+    <h1>A connected vault, built one component at a time.</h1>
+    <p>Smart Vault is a Raspberry Pi prototype exploring sensor monitoring, physical
+      control, and cloud telemetry. The intended design combines a rotary code input,
+      spoken verification, and tamper detection. It is an educational prototype,
+      not a production security system.</p>
+    <aside class="notice"><strong>Work in progress.</strong> These pages distinguish
+      the current source code from the planned design. The latest connection diagram
+      is included; remaining code/wiring differences are listed on the hardware page.</aside>
+    <h2>Current application flow</h2>
+    <ol>
+      <li>Initialize the GPIO devices, sensors, OLED, MQTT client, and voice placeholder.</li>
+      <li>Wait for the button on GPIO 4.</li>
+      <li>Read the LM35 temperature, BH1750 light level, and potentiometer value.</li>
+      <li>Print the readings and show them on the SPI OLED.</li>
+      <li>Attempt to publish light and temperature to ThingSpeak, flash the RGB LED,
+        then wait for the button to be released.</li>
+    </ol>
+    <p>The main loop does not currently call <code>MQTTClient.connect()</code>,
+      so its publish attempt is not a working end-to-end cloud connection yet.</p>
+    <h2>Implementation status</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Component</th><th>Current source</th></tr></thead>
+        <tbody>
+          <tr><td>Sensors</td><td>LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.</td></tr>
+          <tr><td>Display and indicator</td><td>SPI SSD1306 text display and PWM RGB LED.</td></tr>
+          <tr><td>ThingSpeak</td><td>MQTT client implemented; connection still needs integrating into the main loop.</td></tr>
+          <tr><td>Lock mechanism</td><td>Relay and stepper methods exist; the main loop does not invoke them.</td></tr>
+          <tr><td>Voice recognition</td><td>Placeholder class; no recognition or authentication implemented.</td></tr>
+          <tr><td>Code entry and alarms</td><td>No complete PIN flow, automatic temperature/light thresholds, or access policy yet.</td></tr>
+          <tr><td>Pico perimeter node</td><td>Planned; no Pico firmware or perimeter subscriber in this checkout.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h2>Where to start</h2>
+    <p>Review the <a href="hardware.html">code-derived pin map and connection diagram</a>,
+      follow the <a href="setup.html">Raspberry Pi setup</a>, or read how to
+      <a href="development.html">update and publish these pages</a>.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
+</body>
+</html>

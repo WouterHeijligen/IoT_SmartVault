@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Setup</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Main navigation">
+      <a href="index.html">Overview</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html" aria-current="page">Setup</a>
+      <a href="development.html">Development</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Raspberry Pi setup</h1>
+    <p>The application targets a Raspberry Pi with GPIO access, SPI, and I2C.
+      It cannot run unchanged on a regular Windows laptop. Check the
+      <a href="hardware.html">hardware notes</a> before connecting components.</p>
+    <h2>1. Prepare the Pi</h2>
+    <p>Use Raspberry Pi OS with Python 3, Git, and Python virtual environment
+      support. Enable SPI and I2C using <code>sudo raspi-config</code>
+      under Interface Options; follow any restart instructions it gives.</p>
+    <h2>2. Install the application</h2>
+    <p>Run these commands in a terminal on the Raspberry Pi:</p>
+    <pre><code>git clone https://github.com/WouterHeijligen/IoT_SmartVault.git
+cd IoT_SmartVault
+python3 -m venv env --system-site-packages
+source env/bin/activate
+python -m pip install -r requirements.txt</code></pre>
+    <p>Do not add the local <code>env/</code> directory to Git. Hardware-specific
+      dependencies may also require OS packages appropriate to your Pi and OS version.</p>
+    <h2>3. Configure ThingSpeak</h2>
+    <p>Create a local <code>.env</code> file in the repository root using your own
+      ThingSpeak MQTT device credentials and channel ID:</p>
+    <pre><code>THINGSPEAK_MQTT_CLIENT_ID=your_client_id
+THINGSPEAK_MQTT_USERNAME=your_username
+THINGSPEAK_MQTT_PASSWORD=your_password
+THINGSPEAK_CHANNEL_ID=your_channel_id</code></pre>
+    <p>The file is ignored by Git. Never put real credentials into these pages or
+      GitHub Actions. The static documentation needs no ThingSpeak secrets.</p>
+    <p>The MQTT client targets <code>mqtt3.thingspeak.com:1883</code>, publishing
+      to <code>channels/&lt;channel_id&gt;/publish</code>. It maps
+      <code>field1</code> to light in lux and <code>field2</code> to temperature
+      in degrees Celsius. The potentiometer is not published.</p>
+    <aside class="notice"><strong>Current limitation:</strong> <code>main.py</code>
+      does not call <code>mqtt.connect()</code> before publishing. Cloud delivery
+      is not complete in this application flow. The configured MQTT transport is
+      unencrypted; do not treat this prototype as a secure deployment.</aside>
+    <h2>4. Run the prototype</h2>
+    <pre><code>source env/bin/activate
+python3 main.py</code></pre>
+    <p>Startup initializes the hardware immediately, including relay and stepper
+      GPIO outputs. Only run with reviewed wiring and a safe mechanical setup.
+      Press the button to take a measurement and trigger the RGB test sequence.
+      Press <kbd>Ctrl+C</kbd> to stop; use <code>deactivate</code> to leave the environment.</p>
+    <h2>Reading the potentiometer</h2>
+    <p>The current display shows the raw <code>AnalogIn.value</code> result.
+      Adafruit's API exposes a 16-bit-scaled value even though the MCP3008 is a
+      10-bit ADC. The existing <code>raw_to_digit()</code> helper expects a
+      10-bit input and is not called by the main flow. A complete 0-9 code entry
+      interface still needs integration.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
+</body>
+</html>
