@@ -13,6 +13,7 @@ VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis te
 
 LUX_SABOTAGE_THRESHOLD = 5000.0  # Voorlopig hoog gezet voor testen in daglicht
 TEMP_FIRE_THRESHOLD_C = 25.0     # Voorlopig laag gezet voor testen in kamerwarmte
+FIRE_CONFIRM_READINGS = 10       # Opeenvolgende metingen (10 Hz) boven de drempel voor brandalarm
 HYSTERESIS_10BIT = 12            # Dode band (op 0..1023) tegen flikkeren tussen twee cijfers
 MAX_PIN_ATTEMPTS = 3             # Pogingen voor de wachtperiode ingaat
 WRONG_PIN_BLINK_S = 3.0          # Zwaailicht na een foute code
@@ -42,6 +43,7 @@ class VaultState:
         self.unlock_executed = False    # Stappenmotor 1x draaien per ontgrendeling
         self.lock_executed = True       # Stappenmotor 1x terugdraaien per vergrendeling
         self.alarm_notified = False     # ntfy push 1x per alarm
+        self.motor_busy = False         # True zolang de stappenmotor draait
         self.wrong_pin_until = 0.0      # monotonic tijdstip tot wanneer "foute code" getoond wordt
         self.lockout_until = 0.0        # monotonic tijdstip waarop de wachtperiode eindigt
         self.lockout_push_pending = False   # ntfy push 1x versturen bij start wachtperiode
