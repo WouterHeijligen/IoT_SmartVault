@@ -34,6 +34,8 @@ from vault_state import (
     SECRET_PIN,
     BYPASS_VOICE_2FA,
     VOICE_PASSPHRASE,
+    VOICE_TIMEOUT_S,
+    FIRE_CONFIRM_READINGS,
     LUX_SABOTAGE_THRESHOLD,
     TEMP_FIRE_THRESHOLD_C,
     HYSTERESIS_10BIT,
@@ -134,12 +136,14 @@ def thread_button():
 def thread_sensors_and_display():
     """Leest op 10 Hz de sensoren uit en ververst het OLED-scherm."""
     last_digit = 0
+    fire_count = 0
 
     while state.running:
         try:
             with state.spi_lock:
                 raw_10bit = sensors.lees_potmeter_raw()
-                temp_c = sensors.lees_temperatuur()
+                temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
+                temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
 
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
 
@@ -155,7 +159,13 @@ def thread_sensors_and_display():
                 state.temp_c = temp_c
                 state.lux = lux
 
-                if temp_c > TEMP_FIRE_THRESHOLD_C and state.mode != "ALARM":
+                # Tijdens de motorbeweging is de voeding onstabiel: negeer en eis ~1s aanhoudende overschrijding
+                if temp_c > TEMP_FIRE_THRESHOLD_C and not state.motor_busy:
+                    fire_count += 1
+                else:
+                    fire_count = 0
+
+                if fire_count >= FIRE_CONFIRM_READINGS and state.mode != "ALARM":
                     state.mode = "ALARM"
                     state.alarm_reason = f"BRAND! T={temp_c:.1f}C"
 
@@ -226,14 +236,21 @@ def thread_actuators():
 
         if need_unlock_motion:
             licht.kleur_procent(0, 100, 0)
+            with state.lock:
+                state.motor_busy = True
             vault.open()
             # Een alarm of reset tijdens het openen mag de sluitbeweging niet overslaan
             with state.lock:
                 state.lock_executed = False
+                state.motor_busy = False
 
         if need_lock_motion:
             licht.kleur_procent(0, 0, 80)
+            with state.lock:
+                state.motor_busy = True
             vault.sluit()
+            with state.lock:
+                state.motor_busy = False
 
         if mode in ("PIN_INPUT", "LOCKOUT"):
             vault.stroomloos()
@@ -310,6 +327,50 @@ def thread_cloud():
 # ==============================================================================
 # PERIMETER (PICO WH VIA LOKALE MQTT BROKER)
 # ==============================================================================
+# ==============================================================================
+# THREAD 5: SPRAAKHERKENNING (FACTOR 2)
+# ==============================================================================
+def thread_voice():
+    """Laadt het model direct bij het opstarten en luistert daarna zolang de kluis op Factor 2 wacht."""
+    try:
+        voice.laad()
+    except Exception as e:
+        print(f"[VOICE FOUT] Model laden mislukt: {e}")
+
+    while state.running:
+        with state.lock:
+            wacht_op_spraak = (state.mode == "VOICE_2FA")
+
+        if not wacht_op_spraak:
+            time.sleep(0.2)
+            continue
+
+        print(f"[VOICE] Luisteren naar '{VOICE_PASSPHRASE}' ({VOICE_TIMEOUT_S:.0f}s)...")
+        try:
+            gehoord = voice.luister(
+                timeout_s=VOICE_TIMEOUT_S,
+                stop=lambda: not state.running or state.mode != "VOICE_2FA",
+                doelzin=VOICE_PASSPHRASE.lower(),
+            )
+        except Exception as e:
+            print(f"[VOICE FOUT] {e}")
+            gehoord = ""
+            time.sleep(1.0)
+
+        with state.lock:
+            if state.mode != "VOICE_2FA":
+                continue
+
+            if VOICE_PASSPHRASE.lower() in gehoord.lower():
+                print("[AUTH] Factor 2 (spraak) correct! -> UNLOCKED")
+                state.mode = "UNLOCKED"
+                state.unlock_executed = False
+            else:
+                print("[AUTH] Passphrase niet herkend, terug naar PIN-invoer.")
+                state.mode = "PIN_INPUT"
+                state.entered_pin = []
+
+
 def on_perimeter_afstand(dist_cm):
     with state.lock:
         state.perimeter_cm = dist_cm
@@ -339,6 +400,8 @@ def main():
         threading.Thread(target=thread_actuators, name="Actuators", daemon=True),
         threading.Thread(target=thread_cloud, name="Cloud", daemon=True),
     ]
+    if not BYPASS_VOICE_2FA:
+        threads.append(threading.Thread(target=thread_voice, name="Voice", daemon=True))
 
     for t in threads:
         t.start()
