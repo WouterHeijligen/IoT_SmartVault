@@ -7,8 +7,9 @@ import threading
 # Configuratie & drempelwaarden
 # ==============================================================================
 SECRET_PIN = [4, 7, 2]           # De 3-cijferige kluiscode (in te voeren via potmeter 0-9)
-BYPASS_VOICE_2FA = True          # Zet op False zodra de USB-microfoon & Vosk gekoppeld zijn
+BYPASS_VOICE_2FA = False         # True slaat de spraakstap over (zonder USB-microfoon)
 VOICE_PASSPHRASE = "open sesam"  # Geheime gesproken passphrase voor Factor 2
+VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis terugvalt naar PIN-invoer
 
 LUX_SABOTAGE_THRESHOLD = 5000.0  # Voorlopig hoog gezet voor testen in daglicht
 TEMP_FIRE_THRESHOLD_C = 25.0     # Voorlopig laag gezet voor testen in kamerwarmte

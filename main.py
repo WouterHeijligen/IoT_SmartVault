@@ -34,6 +34,7 @@ from vault_state import (
     SECRET_PIN,
     BYPASS_VOICE_2FA,
     VOICE_PASSPHRASE,
+    VOICE_TIMEOUT_S,
     LUX_SABOTAGE_THRESHOLD,
     TEMP_FIRE_THRESHOLD_C,
     HYSTERESIS_10BIT,
@@ -310,6 +311,45 @@ def thread_cloud():
 # ==============================================================================
 # PERIMETER (PICO WH VIA LOKALE MQTT BROKER)
 # ==============================================================================
+# ==============================================================================
+# THREAD 5: SPRAAKHERKENNING (FACTOR 2)
+# ==============================================================================
+def thread_voice():
+    """Luistert naar de passphrase zolang de kluis op Factor 2 wacht."""
+    while state.running:
+        with state.lock:
+            wacht_op_spraak = (state.mode == "VOICE_2FA")
+
+        if not wacht_op_spraak:
+            time.sleep(0.2)
+            continue
+
+        print(f"[VOICE] Luisteren naar '{VOICE_PASSPHRASE}' ({VOICE_TIMEOUT_S:.0f}s)...")
+        try:
+            gehoord = voice.luister(
+                timeout_s=VOICE_TIMEOUT_S,
+                stop=lambda: not state.running or state.mode != "VOICE_2FA",
+                doelzin=VOICE_PASSPHRASE.lower(),
+            )
+        except Exception as e:
+            print(f"[VOICE FOUT] {e}")
+            gehoord = ""
+            time.sleep(1.0)
+
+        with state.lock:
+            if state.mode != "VOICE_2FA":
+                continue
+
+            if VOICE_PASSPHRASE.lower() in gehoord.lower():
+                print("[AUTH] Factor 2 (spraak) correct! -> UNLOCKED")
+                state.mode = "UNLOCKED"
+                state.unlock_executed = False
+            else:
+                print("[AUTH] Passphrase niet herkend, terug naar PIN-invoer.")
+                state.mode = "PIN_INPUT"
+                state.entered_pin = []
+
+
 def on_perimeter_afstand(dist_cm):
     with state.lock:
         state.perimeter_cm = dist_cm
@@ -338,7 +378,8 @@ def main():
         threading.Thread(target=thread_sensors_and_display, name="Sensors-OLED", daemon=True),
         threading.Thread(target=thread_actuators, name="Actuators", daemon=True),
         threading.Thread(target=thread_cloud, name="Cloud", daemon=True),
-    ]
+                threading.Thread(target=thread_voice, name="Voice", daemon=True),
+            ]
 
     for t in threads:
         t.start()
