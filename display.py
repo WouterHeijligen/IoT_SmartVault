@@ -192,7 +192,10 @@ class Display:
         loitering,
         reason,
         voice_passphrase,
-        alarm_veilig
+        alarm_veilig,
+        toon_fout=False,
+        pogingen_over=0,
+        wachttijd_s=0
     ):
         """Teken het kluisscherm voor de huidige modus (PIN, 2FA, open, alarm)."""
 
@@ -209,7 +212,21 @@ class Display:
         draw.text((2, 0), top_bar, font=font, fill=255)
         draw.line((0, 12, 127, 12), fill=255)
 
-        if mode == "PIN_INPUT":
+        if mode == "PIN_INPUT" and toon_fout:
+            draw.text((2, 20), "FOUTE CODE!", font=font, fill=255)
+            draw.text((2, 36), f"Nog {pogingen_over} pogingen over", font=font, fill=255)
+
+        elif mode == "LOCKOUT":
+            draw.text((2, 18), "FOUTE CODE!", font=font, fill=255)
+            draw.text((2, 32), "Geblokkeerd, wacht:", font=font, fill=255)
+            draw.text(
+                (2, 46),
+                f"{wachttijd_s // 60}:{wachttijd_s % 60:02d}",
+                font=font,
+                fill=255
+            )
+
+        elif mode == "PIN_INPUT":
             draw.text((2, 16), "STATUS: VERGRENDELD", font=font, fill=255)
             slots = [
                 str(pin_so_far[i]) if i < len(pin_so_far) else "_"

@@ -38,6 +38,8 @@ from vault_state import (
     TEMP_FIRE_THRESHOLD_C,
     HYSTERESIS_10BIT,
     MAX_PIN_ATTEMPTS,
+    WRONG_PIN_BLINK_S,
+    PIN_LOCKOUT_S,
     LOITER_DISTANCE_CM,
     TELEMETRY_INTERVAL_S,
     MODE_CODES,
@@ -90,11 +92,20 @@ def thread_button():
                                     state.mode = "VOICE_2FA"
                             else:
                                 state.failed_attempts += 1
-                                print(f"[AUTH] Foute pincode! Poging {state.failed_attempts}/{MAX_PIN_ATTEMPTS}")
                                 state.entered_pin = []
-                                if state.failed_attempts >= MAX_PIN_ATTEMPTS:
-                                    state.mode = "ALARM"
-                                    state.alarm_reason = "3x FOUTE PINCODE"
+                                state.wrong_pin_until = time.monotonic() + WRONG_PIN_BLINK_S
+                                retries_left = MAX_PIN_ATTEMPTS - state.failed_attempts
+                                if retries_left > 0:
+                                    print(f"[AUTH] Foute code! Nog {retries_left} pogingen over.")
+                                else:
+                                    print(f"[AUTH] Foute code! Geen pogingen meer. Wacht {PIN_LOCKOUT_S // 60} minuten.")
+                                    state.mode = "LOCKOUT"
+                                    state.lockout_until = time.monotonic() + PIN_LOCKOUT_S
+                                    state.lockout_push_pending = True
+                                    state.lockout_siren_pending = True
+
+                    elif state.mode == "LOCKOUT":
+                        print("[AUTH] Wachtperiode actief, invoer geblokkeerd.")
 
                     elif state.mode in ("UNLOCKED", "ALARM"):
                         if state.mode == "UNLOCKED":
@@ -158,6 +169,15 @@ def thread_sensors_and_display():
                 pin_so_far = list(state.entered_pin)
                 loitering = state.loitering_alert
                 reason = state.alarm_reason
+                now = time.monotonic()
+                if state.mode == "LOCKOUT" and now >= state.lockout_until:
+                    print("[AUTH] Wachtperiode voorbij, opnieuw proberen mogelijk.")
+                    state.mode = "PIN_INPUT"
+                    state.failed_attempts = 0
+                    mode = "PIN_INPUT"
+                toon_fout = now < state.wrong_pin_until
+                pogingen_over = MAX_PIN_ATTEMPTS - state.failed_attempts
+                wachttijd_s = max(0, int(state.lockout_until - now))
 
             with state.spi_lock:
                 display.toon_kluisscherm(
@@ -169,7 +189,10 @@ def thread_sensors_and_display():
                     loitering=loitering,
                     reason=reason,
                     voice_passphrase=VOICE_PASSPHRASE,
-                    alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD)
+                    alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
+                    toon_fout=toon_fout,
+                    pogingen_over=pogingen_over,
+                    wachttijd_s=wachttijd_s
                 )
 
         except Exception as e:
@@ -183,12 +206,13 @@ def thread_sensors_and_display():
 # ==============================================================================
 def thread_actuators():
     """Stuurt RGB LED, relais-interlock en stappenmotor aan."""
-    blink_toggle = False
     last_siren_time = 0.0
 
     while state.running:
         with state.lock:
             mode = state.mode
+            siren_once = state.lockout_siren_pending
+            state.lockout_siren_pending = False
             need_unlock_motion = (mode == "UNLOCKED" and not state.unlock_executed)
             if need_unlock_motion:
                 state.unlock_executed = True
@@ -196,6 +220,9 @@ def thread_actuators():
             need_lock_motion = (mode == "PIN_INPUT" and not state.lock_executed)
             if need_lock_motion:
                 state.lock_executed = True
+
+        if siren_once:
+            notificaties.sirene()
 
         if need_unlock_motion:
             licht.kleur_procent(0, 100, 0)
@@ -205,9 +232,16 @@ def thread_actuators():
             licht.kleur_procent(0, 0, 80)
             vault.sluit()
 
-        if mode == "PIN_INPUT":
+        if mode in ("PIN_INPUT", "LOCKOUT"):
             vault.stroomloos()
-            licht.kleur_procent(0, 0, 80)
+            with state.lock:
+                foute_code = time.monotonic() < state.wrong_pin_until
+            if foute_code:
+                licht.zwaai()
+            elif mode == "LOCKOUT":
+                licht.kleur_procent(30, 0, 0)  # Zacht rood tijdens wachtperiode
+            else:
+                licht.kleur_procent(0, 0, 80)
 
         elif mode == "VOICE_2FA":
             licht.kleur_procent(80, 30, 0)
@@ -217,17 +251,13 @@ def thread_actuators():
 
         elif mode == "ALARM":
             vault.stroomloos()
-            blink_toggle = not blink_toggle
-            if blink_toggle:
-                licht.kleur_procent(100, 0, 0)
-            else:
-                licht.kleur_procent(0, 0, 0)
+            licht.zwaai()
 
             if time.time() - last_siren_time > 4.0:
                 notificaties.sirene()
                 last_siren_time = time.time()
 
-        time.sleep(0.15)
+        time.sleep(0.03)  # Snel genoeg voor een vloeiend zwaailicht
 
 
 # ==============================================================================
@@ -247,6 +277,14 @@ def thread_cloud():
             should_alert = (mode == "ALARM" and not state.alarm_notified)
             if should_alert:
                 state.alarm_notified = True
+            lockout_alert = state.lockout_push_pending
+            state.lockout_push_pending = False
+
+        if lockout_alert:
+            notificaties.stuur_push(
+                f"SMART VAULT: {MAX_PIN_ATTEMPTS}x foute pincode. "
+                f"Kluis {PIN_LOCKOUT_S // 60} minuten geblokkeerd."
+            )
 
         if should_alert:
             notificaties.stuur_push(
