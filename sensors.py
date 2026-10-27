@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import time
+
 import board
 import busio
 import digitalio
@@ -24,6 +26,16 @@ class Sensors:
     def __init__(self):
         # I2C bus voor de BH1750 lichtsensor
         self.i2c = busio.I2C(board.D3, board.D2)
+        self.laatste_lux = 0.0
+
+        # Start continue meting (high-res, ~120 ms per meting)
+        while not self.i2c.try_lock():
+            time.sleep(0.01)
+        try:
+            self.i2c.writeto(self.BH1750_ADDRESS, self.BH1750_COMMAND_HIGH_RES)
+        finally:
+            self.i2c.unlock()
+        time.sleep(0.2)
 
         # SPI0 bus, wordt ook door het OLED-display gebruikt
         self.spi = busio.SPI(
@@ -62,17 +74,17 @@ class Sensors:
 
         result = bytearray(2)
 
-        if self.i2c.try_lock():
-            try:
-                self.i2c.writeto_then_readfrom(
-                    self.BH1750_ADDRESS,
-                    self.BH1750_COMMAND_HIGH_RES,
-                    result
-                )
-            finally:
-                self.i2c.unlock()
+        if not self.i2c.try_lock():
+            return self.laatste_lux
 
-        return ((result[0] << 8) | result[1]) / 1.2
+        try:
+            # Continuous mode: de sensor meet zelf door, dus alleen uitlezen
+            self.i2c.readfrom_into(self.BH1750_ADDRESS, result)
+        finally:
+            self.i2c.unlock()
+
+        self.laatste_lux = ((result[0] << 8) | result[1]) / 1.2
+        return self.laatste_lux
 
     def lees_potmeter_raw(self):
         """
