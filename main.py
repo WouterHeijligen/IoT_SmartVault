@@ -227,6 +227,9 @@ def thread_actuators():
         if need_unlock_motion:
             licht.kleur_procent(0, 100, 0)
             vault.open()
+            # Een alarm of reset tijdens het openen mag de sluitbeweging niet overslaan
+            with state.lock:
+                state.lock_executed = False
 
         if need_lock_motion:
             licht.kleur_procent(0, 0, 80)
