@@ -89,6 +89,11 @@ class VaultLock:
 
         print("Kluis gesloten")
 
+    def stroomloos(self):
+        """Zorg dat de motor geen stroom heeft (relais UIT)."""
+
+        self.relais.off()
+
     def close(self):
 
         self.relais.off()

@@ -25,6 +25,10 @@ class Zwaailicht:
     def uit(self):
         self.led.off()
 
+    def kleur_procent(self, rood, groen, blauw):
+        """Zet de kleur in procenten (0..100)."""
+        self.led.color = (rood / 100.0, groen / 100.0, blauw / 100.0)
+
     def alarm(self, aantal=5, snelheid=0.2):
         """Wissel rood en blauw af als zwaailicht."""
         for _ in range(aantal):

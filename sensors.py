@@ -1,45 +1,96 @@
 #!/usr/bin/env python3
 
+import board
+import busio
+import digitalio
+import adafruit_mcp3xxx.mcp3008 as MCP
+from adafruit_mcp3xxx.analog_in import AnalogIn
+
+
 class Sensors:
+    """
+    Sensoren van de Smart Vault.
+
+    Aansluitingen:
+        BH1750 (I2C 0x23)  -> GPIO 2 (SDA), GPIO 3 (SCL)
+        MCP3008 (SPI0)     -> CS op GPIO 25
+            CH0: potmeter (cijferslot)
+            CH1: LM35 temperatuursensor
+    """
+
+    BH1750_ADDRESS = 0x23
+    BH1750_COMMAND_HIGH_RES = bytearray([0x10])
+
     def __init__(self):
-        # Hier initialiseren we later:
-        # - MCP3008
-        # - Temperatuursensor
-        # - Lichtsensor
+        # I2C bus voor de BH1750 lichtsensor
+        self.i2c = busio.I2C(board.D3, board.D2)
+
+        # SPI0 bus, wordt ook door het OLED-display gebruikt
+        self.spi = busio.SPI(
+            clock=board.SCK,
+            MISO=board.MISO,
+            MOSI=board.MOSI
+        )
+
+        self.cs = digitalio.DigitalInOut(board.D25)
+        self.mcp = MCP.MCP3008(self.spi, self.cs)
+
+        self.potmeter_channel = AnalogIn(self.mcp, MCP.P0)
+        self.lm35_channel = AnalogIn(self.mcp, MCP.P1)
 
         print("Sensors initialized")
 
     def lees_temperatuur(self):
         """
-        Lees temperatuur uit.
+        Lees de LM35 uit (10 mV per graad Celsius).
 
         Returns:
             float: temperatuur in graden Celsius
         """
 
-        # TODO: code van werkende temperatuursensor toevoegen
-        temperatuur = 0.0
+        voltage_mv = self.lm35_channel.voltage * 1000.0
 
-        return temperatuur
+        return voltage_mv / 10.0
 
     def lees_licht(self):
         """
-        Lees lichtsensor uit.
+        Lees de BH1750 lichtsensor uit.
 
         Returns:
-            float: lichtwaarde
+            float: lichtwaarde in lux
         """
 
-        # TODO: code van werkende lichtsensor toevoegen
-        licht = 0.0
+        result = bytearray(2)
 
-        return licht
+        if self.i2c.try_lock():
+            try:
+                self.i2c.writeto_then_readfrom(
+                    self.BH1750_ADDRESS,
+                    self.BH1750_COMMAND_HIGH_RES,
+                    result
+                )
+            finally:
+                self.i2c.unlock()
+
+        return ((result[0] << 8) | result[1]) / 1.2
+
+    def lees_potmeter_raw(self):
+        """
+        Lees de potmeter uit.
+
+        Returns:
+            int: ruwe waarde van 0 t/m 1023 (10-bit)
+        """
+
+        return self.potmeter_channel.value >> 6
 
     def lees_alles(self):
         return {
             "temperatuur": self.lees_temperatuur(),
-            "licht": self.lees_licht()
+            "licht": self.lees_licht(),
+            "potmeter": self.lees_potmeter_raw()
         }
 
     def close(self):
+        self.cs.deinit()
         print("Sensors afgesloten")
