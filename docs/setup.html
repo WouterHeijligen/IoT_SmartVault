@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Setup</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Main navigation">
+      <a href="index.html">Overview</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html" aria-current="page">Setup</a>
+      <a href="development.html">Development</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Raspberry Pi setup</h1>
+    <p>The application targets a Raspberry Pi with GPIO access, SPI, and I2C.
+      It cannot run unchanged on a regular Windows laptop. Check the
+      <a href="hardware.html">hardware notes</a> before connecting components.</p>
+    <h2>1. Prepare the Pi</h2>
+    <p>Use Raspberry Pi OS with Python 3, Git, and Python virtual environment
+      support. Enable SPI and I2C using <code>sudo raspi-config</code>
+      under Interface Options; follow any restart instructions it gives.</p>
+    <h2>2. Install the application</h2>
+    <p>Run these commands in a terminal on the Raspberry Pi:</p>
+    <pre><code>git clone https://github.com/WouterHeijligen/IoT_SmartVault.git
+cd IoT_SmartVault
+python3 -m venv env --system-site-packages
+source env/bin/activate
+python -m pip install -r requirements.txt</code></pre>
+    <p>Do not add the local <code>env/</code> directory to Git. Hardware-specific
+      dependencies may also require OS packages appropriate to your Pi and OS version.</p>
+    <h2>3. Configure the environment</h2>
+    <p>Create a local <code>.env</code> file in the repository root using your own
+      ThingSpeak MQTT device credentials and channel ID. <code>NTFY_TOPIC</code> is
+      optional and selects the <a href="https://ntfy.sh">ntfy.sh</a> topic for push
+      notifications; subscribe to it in the ntfy app on your phone.</p>
+    <pre><code>THINGSPEAK_MQTT_CLIENT_ID=your_client_id
+THINGSPEAK_MQTT_USERNAME=your_username
+THINGSPEAK_MQTT_PASSWORD=your_password
+THINGSPEAK_CHANNEL_ID=your_channel_id
+NTFY_TOPIC=your_own_topic_name</code></pre>
+    <p>The file is ignored by Git. Never put real credentials into these pages or
+      GitHub Actions. The static documentation needs no ThingSpeak secrets.
+      Without ThingSpeak credentials the vault still runs and prints its telemetry
+      instead of publishing it.</p>
+    <p>The MQTT client targets <code>mqtt3.thingspeak.com:1883</code>, publishing
+      to <code>channels/&lt;channel_id&gt;/publish</code>. Fields: <code>field1</code> light (lux),
+      <code>field2</code> temperature (&deg;C), <code>field3</code> perimeter distance (cm) and
+      <code>field4</code> vault status (0 locked, 1 second factor, 2 open, 3 alarm, 4 lockout).</p>
+    <aside class="notice"><strong>Note:</strong> the configured MQTT transport is
+      unencrypted; do not treat this prototype as a secure deployment.</aside>
+    <h2>4. Run the vault</h2>
+    <pre><code>source env/bin/activate
+python3 main.py</code></pre>
+    <p>Startup initializes the hardware immediately, including relay and stepper
+      GPIO outputs. Only run with reviewed wiring and a safe mechanical setup.
+      Turn the potentiometer to a digit and press the button to confirm it; repeat
+      for all three digits. The PIN, thresholds, lockout time and voice bypass are
+      set at the top of <code>vault_state.py</code>. Press <kbd>Ctrl+C</kbd> to stop;
+      use <code>deactivate</code> to leave the environment.</p>
+    <p>The Pico perimeter node publishes its distance to an MQTT broker running on the Pi
+      (<code>127.0.0.1:1883</code>, topic <code>vault/perimeter/distance</code>). Install and start
+      a broker such as Mosquitto if you use it; without one the vault logs a warning and continues.</p>
+    <h2>Reading the potentiometer</h2>
+    <p>Adafruit's <code>AnalogIn.value</code> is 16-bit scaled although the MCP3008 is a
+      10-bit ADC. <code>sensors.py</code> shifts it back to 0-1023 and <code>main.py</code>
+      maps it to digits 0-9 with a small dead band to prevent flicker at digit borders.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
+</body>
+</html>

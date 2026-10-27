@@ -32,6 +32,7 @@ THINGSPEAK_MQTT_CLIENT_ID=your_client_id
 THINGSPEAK_MQTT_USERNAME=your_username
 THINGSPEAK_MQTT_PASSWORD=your_password
 THINGSPEAK_CHANNEL_ID=your_channel_id
+NTFY_TOPIC=your_own_topic_name   # optional, for push notifications
 ```
 
 Do not commit this file to Git.
