@@ -19,10 +19,14 @@
   <main>
     <h1>Documentation and development</h1>
     <h2>Source layout</h2>
-    <p><code>main.py</code> orchestrates the button-driven demo.
-      <code>sensors.py</code>, <code>display.py</code>, and <code>zwaailicht.py</code>
-      handle readings and feedback. <code>mqtt_client.py</code> handles ThingSpeak;
-      <code>vault_lock.py</code> contains relay/stepper control.
+    <p><code>main.py</code> runs the vault state machine in four threads (button,
+      sensors and OLED, actuators, cloud). Supporting modules:
+      <code>vault_state.py</code> (configuration and shared state),
+      <code>sensors.py</code> (potentiometer, LM35, BH1750),
+      <code>display.py</code> (OLED screens), <code>zwaailicht.py</code> (RGB LED and
+      blue/red zwaailicht fade), <code>vault_lock.py</code> (relay and stepper),
+      <code>mqtt_client.py</code> (ThingSpeak telemetry and the local perimeter subscriber),
+      <code>notificaties.py</code> (ntfy push and siren).
       <code>voice.py</code> is currently a placeholder. The <code>model-en/</code>
       and <code>model-nl/</code> folders contain speech model assets, but the voice
       class does not load them yet.</p>

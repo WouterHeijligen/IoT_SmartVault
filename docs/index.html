@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Smart Vault student project: Raspberry Pi sensors, local display, and ThingSpeak telemetry.">
+  <meta name="description" content="Smart Vault student project: Raspberry Pi sensors, PIN lock, alarms, and ThingSpeak telemetry.">
   <title>Smart Vault | Overview</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -27,33 +27,45 @@
     <aside class="notice"><strong>Work in progress.</strong> These pages distinguish
       the current source code from the planned design. The latest connection diagram
       is included; remaining code/wiring differences are listed on the hardware page.</aside>
-    <h2>Current application flow</h2>
+    <h2>Application flow</h2>
+    <p><code>main.py</code> starts four threads that share one state object
+      (<code>vault_state.py</code>), plus a subscriber for the Pico perimeter distance.</p>
     <ol>
-      <li>Initialize the GPIO devices, sensors, OLED, MQTT client, and voice placeholder.</li>
-      <li>Wait for the button on GPIO 4.</li>
-      <li>Read the LM35 temperature, BH1750 light level, and potentiometer value.</li>
-      <li>Print the readings and show them on the SPI OLED.</li>
-      <li>Attempt to publish light and temperature to ThingSpeak, flash the RGB LED,
-        then wait for the button to be released.</li>
+      <li><strong>Code entry:</strong> turn the potentiometer to pick a digit (0-9) and press the
+        button on GPIO 4 to confirm it. Three digits form the PIN.</li>
+      <li><strong>Correct PIN:</strong> the relay powers the stepper, the lock opens, the LED turns green
+        and the relay switches off again. Pressing the button closes the vault.
+        With <code>BYPASS_VOICE_2FA = False</code> the vault first waits for a spoken
+        passphrase (not implemented yet).</li>
+      <li><strong>Wrong PIN:</strong> the OLED shows how many attempts remain and the LED runs the
+        zwaailicht for 3 seconds. After 3 wrong codes the vault is locked for 5 minutes,
+        plays a short siren and sends one ntfy push notification.</li>
+      <li><strong>Alarm:</strong> a temperature above the fire threshold, or light inside a closed vault,
+        starts the alarm: zwaailicht, a repeating siren and a push notification.
+        The button resets it.</li>
+      <li><strong>Telemetry:</strong> every 15 seconds light, temperature, perimeter distance and
+        vault status are published to ThingSpeak.</li>
     </ol>
-    <p>The main loop does not currently call <code>MQTTClient.connect()</code>,
-      so its publish attempt is not a working end-to-end cloud connection yet.</p>
+    <p>The LED zwaailicht fades smoothly between blue and red at reduced brightness.
+      Thresholds are test values (light 5000 lux, temperature 25 &deg;C) and are set in
+      <code>vault_state.py</code>.</p>
     <h2>Implementation status</h2>
     <div class="table-scroll">
       <table>
         <thead><tr><th>Component</th><th>Current source</th></tr></thead>
         <tbody>
           <tr><td>Sensors</td><td>LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.</td></tr>
-          <tr><td>Display and indicator</td><td>SPI SSD1306 text display and PWM RGB LED.</td></tr>
-          <tr><td>ThingSpeak</td><td>MQTT client implemented; connection still needs integrating into the main loop.</td></tr>
-          <tr><td>Lock mechanism</td><td>Relay and stepper methods exist; the main loop does not invoke them.</td></tr>
-          <tr><td>Voice recognition</td><td>Placeholder class; no recognition or authentication implemented.</td></tr>
-          <tr><td>Code entry and alarms</td><td>No complete PIN flow, automatic temperature/light thresholds, or access policy yet.</td></tr>
-          <tr><td>Pico perimeter node</td><td>Planned; no Pico firmware or perimeter subscriber in this checkout.</td></tr>
+          <tr><td>Display and indicator</td><td>SPI SSD1306 vault screens and a PWM RGB LED with zwaailicht effect.</td></tr>
+          <tr><td>Code entry</td><td>3-digit potentiometer PIN with retry counter and 5 minute lockout.</td></tr>
+          <tr><td>Lock mechanism</td><td>Relay interlock and stepper driven by the vault state.</td></tr>
+          <tr><td>Alarms</td><td>Fire and tamper (light) detection, siren and ntfy push notification.</td></tr>
+          <tr><td>ThingSpeak</td><td>MQTT telemetry using credentials from <code>.env</code>.</td></tr>
+          <tr><td>Pico perimeter node</td><td>The Pi subscribes to <code>vault/perimeter/distance</code> on a local broker;
+            no Pico firmware is in this repository.</td></tr>
+          <tr><td>Voice recognition</td><td>Placeholder class; second factor is bypassed by default.</td></tr>
         </tbody>
       </table>
-    </div>
-    <h2>Where to start</h2>
+    </div>    <h2>Where to start</h2>
     <p>Review the <a href="hardware.html">code-derived pin map and connection diagram</a>,
       follow the <a href="setup.html">Raspberry Pi setup</a>, or read how to
       <a href="development.html">update and publish these pages</a>.</p>

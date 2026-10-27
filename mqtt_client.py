@@ -162,6 +162,43 @@ class MQTTClient:
         return False
 
     # ---------------------------------------------------------
+    # Telemetrie van de volledige kluis versturen
+    # ---------------------------------------------------------
+
+    def stuur_telemetrie(self, lux, temperatuur, afstand_cm, status_code, status):
+        """
+        Stuurt de kluis-telemetrie naar ThingSpeak.
+
+        field1 = licht (lux)
+        field2 = temperatuur (C)
+        field3 = perimeter afstand (cm)
+        field4 = status (0=vergrendeld, 1=2FA, 2=geopend, 3=alarm)
+        """
+
+        payload = (
+            f"field1={lux:.1f}"
+            f"&field2={temperatuur:.2f}"
+            f"&field3={afstand_cm:.1f}"
+            f"&field4={status_code:d}"
+            f"&status={status}"
+        )
+
+        message = self.client.publish(
+            topic=self.topic,
+            payload=payload,
+            qos=0,
+            retain=False
+        )
+
+        if message.rc == mqtt.MQTT_ERR_SUCCESS:
+            print(f"[THINGSPEAK] Publish OK -> {payload}")
+            return True
+
+        print(f"[THINGSPEAK FOUT] Publish mislukt: {message.rc}")
+
+        return False
+
+    # ---------------------------------------------------------
     # Cleanup
     # ---------------------------------------------------------
 
@@ -173,6 +210,53 @@ class MQTTClient:
         self.client.disconnect()
 
         print("MQTT connection closed.")
+
+
+class PerimeterListener:
+    """
+    Lokale MQTT subscriber op de Pi 5 voor de perimeter-afstand van de Pico WH.
+    De callback krijgt de afstand in cm.
+    """
+
+    BROKER = "127.0.0.1"
+    PORT = 1883
+    TOPIC = "vault/perimeter/distance"
+
+    def __init__(self, on_afstand):
+        self.on_afstand = on_afstand
+
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id="Pi5_SmartVault_Master"
+        )
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
+
+    def _on_connect(self, client, userdata, flags, reason_code, properties):
+        if reason_code == 0:
+            print(f"[MQTT] Verbonden met lokale broker ({self.BROKER}). Subscribed op {self.TOPIC}")
+            client.subscribe(self.TOPIC, qos=0)
+        else:
+            print(f"[MQTT] Verbinding mislukt met code: {reason_code}")
+
+    def _on_message(self, client, userdata, msg):
+        try:
+            afstand = float(msg.payload.decode("utf-8").strip())
+        except ValueError:
+            return
+
+        self.on_afstand(afstand)
+
+    def connect(self):
+        try:
+            self.client.connect(self.BROKER, self.PORT, keepalive=60)
+            self.client.loop_start()
+        except Exception as e:
+            print(f"[MQTT WAARSCHUWING] Lokale broker nog niet bereikbaar: {e}")
+
+    def close(self):
+        self.client.loop_stop()
+        self.client.disconnect()
 
 
 # -------------------------------------------------------------

@@ -31,15 +31,16 @@ class Display:
         self,
         reset_pin=board.D16,
         cs_pin=board.D5,
-        dc_pin=board.D6
+        dc_pin=board.D6,
+        spi=None
     ):
         # Besturingspinnen
         self.oled_reset = digitalio.DigitalInOut(reset_pin)
         self.oled_cs = digitalio.DigitalInOut(cs_pin)
         self.oled_dc = digitalio.DigitalInOut(dc_pin)
 
-        # Hardware SPI-interface van de Raspberry Pi
-        self.spi = board.SPI()
+        # Gedeelde SPI-bus (met de MCP3008) of de hardware SPI van de Pi
+        self.spi = spi if spi is not None else board.SPI()
 
         # SSD1306 initialiseren via SPI
         self.oled = adafruit_ssd1306.SSD1306_SPI(
@@ -177,6 +178,80 @@ class Display:
             font=self.font,
             fill=255
         )
+
+        self.oled.image(image)
+        self.oled.show()
+
+    def toon_kluisscherm(
+        self,
+        mode,
+        lux,
+        temp_c,
+        digit,
+        pin_so_far,
+        loitering,
+        reason,
+        voice_passphrase,
+        alarm_veilig,
+        toon_fout=False,
+        pogingen_over=0,
+        wachttijd_s=0
+    ):
+        """Teken het kluisscherm voor de huidige modus (PIN, 2FA, open, alarm)."""
+
+        if self._closed:
+            return
+
+        image = Image.new("1", (self.oled.width, self.oled.height))
+        draw = ImageDraw.Draw(image)
+        font = self.font
+
+        top_bar = f"L:{int(lux)}lx T:{temp_c:.1f}C"
+        if loitering:
+            top_bar += " [LOITER!]"
+        draw.text((2, 0), top_bar, font=font, fill=255)
+        draw.line((0, 12, 127, 12), fill=255)
+
+        if mode == "PIN_INPUT" and toon_fout:
+            draw.text((2, 20), "FOUTE CODE!", font=font, fill=255)
+            draw.text((2, 36), f"Nog {pogingen_over} pogingen over", font=font, fill=255)
+
+        elif mode == "LOCKOUT":
+            draw.text((2, 18), "FOUTE CODE!", font=font, fill=255)
+            draw.text((2, 32), "Geblokkeerd, wacht:", font=font, fill=255)
+            draw.text(
+                (2, 46),
+                f"{wachttijd_s // 60}:{wachttijd_s % 60:02d}",
+                font=font,
+                fill=255
+            )
+
+        elif mode == "PIN_INPUT":
+            draw.text((2, 16), "STATUS: VERGRENDELD", font=font, fill=255)
+            slots = [
+                str(pin_so_far[i]) if i < len(pin_so_far) else "_"
+                for i in range(3)
+            ]
+            draw.text((2, 30), f"PIN: {'  '.join(slots)}", font=font, fill=255)
+            draw.text((2, 46), f"Draai: [ {digit} ] (Druk=OK)", font=font, fill=255)
+
+        elif mode == "VOICE_2FA":
+            draw.text((2, 18), "FACTOR 1 (PIN): OK!", font=font, fill=255)
+            draw.text((2, 34), "SPREEK WACHTWOORD IN:", font=font, fill=255)
+            draw.text((2, 48), f'"{voice_passphrase.upper()}"', font=font, fill=255)
+
+        elif mode == "UNLOCKED":
+            draw.text((10, 22), "** KLUIS GEOPEND **", font=font, fill=255)
+            draw.text((4, 42), "Druk knop om te sluiten", font=font, fill=255)
+
+        elif mode == "ALARM":
+            draw.rectangle((0, 14, 127, 63), outline=255, fill=0)
+            draw.text((14, 16), "!!! ALARM ACTIEF !!!", font=font, fill=255)
+            draw.text((6, 30), reason[:20], font=font, fill=255)
+            if alarm_veilig:
+                draw.text((6, 46), "Veilig -> Druk=Reset", font=font, fill=255)
+            else:
+                draw.text((6, 46), "Druk knop voor Reset", font=font, fill=255)
 
         self.oled.image(image)
         self.oled.show()

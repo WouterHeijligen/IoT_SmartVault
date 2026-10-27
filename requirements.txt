@@ -4,6 +4,7 @@ adafruit-circuitpython-ssd1306
 adafruit-circuitpython-mcp3xxx
 Pillow
 paho-mqtt
+requests
 python-dotenv
 vosk
 sounddevice
