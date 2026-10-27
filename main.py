@@ -315,7 +315,12 @@ def thread_cloud():
 # THREAD 5: SPRAAKHERKENNING (FACTOR 2)
 # ==============================================================================
 def thread_voice():
-    """Luistert naar de passphrase zolang de kluis op Factor 2 wacht."""
+    """Laadt het model direct bij het opstarten en luistert daarna zolang de kluis op Factor 2 wacht."""
+    try:
+        voice.laad()
+    except Exception as e:
+        print(f"[VOICE FOUT] Model laden mislukt: {e}")
+
     while state.running:
         with state.lock:
             wacht_op_spraak = (state.mode == "VOICE_2FA")
@@ -378,8 +383,9 @@ def main():
         threading.Thread(target=thread_sensors_and_display, name="Sensors-OLED", daemon=True),
         threading.Thread(target=thread_actuators, name="Actuators", daemon=True),
         threading.Thread(target=thread_cloud, name="Cloud", daemon=True),
-                threading.Thread(target=thread_voice, name="Voice", daemon=True),
-            ]
+    ]
+    if not BYPASS_VOICE_2FA:
+        threads.append(threading.Thread(target=thread_voice, name="Voice", daemon=True))
 
     for t in threads:
         t.start()

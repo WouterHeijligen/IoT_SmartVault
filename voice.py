@@ -23,9 +23,9 @@ class VoiceRecognition:
         self.model = None
         self._sd = None
 
-        print("Voice recognition initialized (model wordt geladen bij eerste gebruik)")
+        print("Voice recognition initialized")
 
-    def _laad(self):
+    def laad(self):
         """Laadt Vosk en detecteert de sample rate van de microfoon (eenmalig)."""
         if self.model is not None:
             return
@@ -60,7 +60,7 @@ class VoiceRecognition:
         """
         from vosk import KaldiRecognizer
 
-        self._laad()
+        self.laad()
 
         audio = queue.Queue()
 
