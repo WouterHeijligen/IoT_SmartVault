@@ -17,7 +17,7 @@ class VoiceRecognition:
     """Vosk spraakherkenning via een USB-microfoon (zelfde opzet als vosk_mic_test.py)."""
 
     def __init__(self):
-        self.model_pad = os.getenv("VOSK_MODEL", os.path.join(SCRIPT_DIR, "model-nl"))
+        self.model_pad = os.getenv("VOSK_MODEL", os.path.join(SCRIPT_DIR, "model-en"))
         self.device = int(os.getenv("MIC_DEVICE", "0"))
         self.sample_rate = 44100
         self.model = None
@@ -69,16 +69,21 @@ class VoiceRecognition:
                 print(f"[VOICE AUDIO] {status}", file=sys.stderr)
             audio.put(bytes(indata))
 
-        recognizer = KaldiRecognizer(self.model, self.sample_rate)
+        recognizer = (
+            KaldiRecognizer(self.model, self.sample_rate, json.dumps([doelzin.lower(), "[unk]"]))
+            if doelzin
+            else KaldiRecognizer(self.model, self.sample_rate)
+        )
         laatste = ""
         einde = time.monotonic() + timeout_s
 
         with self._sd.RawInputStream(
             samplerate=self.sample_rate,
-            blocksize=int(self.sample_rate * 0.25),
+            blocksize=int(self.sample_rate * 0.5),
             device=self.device,
             dtype="int16",
             channels=1,
+            latency="high",
             callback=callback,
         ):
             while time.monotonic() < einde:
