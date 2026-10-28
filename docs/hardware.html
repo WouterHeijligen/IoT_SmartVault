@@ -42,6 +42,25 @@
         </tbody>
       </table>
     </div>
+    <h2>Pico 2 W perimeter node</h2>
+    <p>A separate Raspberry Pi Pico 2 W runs CircuitPython and measures distance with an
+      RCWL-9610A sonar in trigger/echo mode. It publishes the distance in cm to the MQTT
+      broker on the Pi (topic <code>vault/perimeter/distance</code>). Numbers below are
+      <strong>physical pin numbers</strong> of the Pico.
+      Firmware and install notes are in <code>pico_2w/</code>.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Sonar pin</th><th>Pico 2 W pin</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>36 (3V3 OUT)</td></tr>
+          <tr><td>GND</td><td>38</td></tr>
+          <tr><td>TRIG</td><td>32 (GP27)</td></tr>
+          <tr><td>ECHO</td><td>34 (GP28)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>On 3.3 V the echo signal is 3.3 V, so no level shifting is needed. If the sensor
+      is powered from 5 V (pin 40), add a 1 k&Omega; / 2 k&Omega; divider on ECHO.</p>
     <h2>Known diagram differences</h2>
     <ul>
       <li>The updated MCP3008 chip-select connection uses GPIO 25, matching the code.
@@ -53,8 +72,9 @@
         label is an I2C address, not an SPI address. Confirm the actual OLED variant
         before changing its wiring or driver.</li>
       <li>The diagram uses GPIO 19 for the blue LED; the code uses GPIO 26.</li>
-      <li>The Pico / HC-SR04 perimeter section describes planned functionality,
-        not firmware present in this repository.</li>
+      <li>The Pico section of the diagram shows an HC-SR04 and may use other pins;
+        the Pico firmware in <code>pico_2w/</code> uses an RCWL-9610A on GP27 / GP28
+        as listed above.</li>
     </ul>
     <h2>Latest connection diagram</h2>
     <p><a href="assets/connection-schema.png">Open the full-size diagram</a>
@@ -72,8 +92,8 @@
       sensor supply requirements, common ground, and LED resistors against the actual
       components. In particular, verify the diagram's 3.3 V LM35 supply label
       against the exact sensor's rated supply range.
-      Motors must use a suitable driver, not GPIO power. A future HC-SR04 connection
-      needs appropriate level shifting on its echo signal.</p>
+      Motors must use a suitable driver, not GPIO power. The Pico sonar is powered
+      from 3.3 V; at 5 V its echo signal needs a voltage divider.</p>
   </main>
   <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Source on GitHub</a></footer>
 </body>

@@ -19,6 +19,8 @@ MAX_PIN_ATTEMPTS = 3             # Pogingen voor de wachtperiode ingaat
 WRONG_PIN_BLINK_S = 3.0          # Zwaailicht na een foute code
 PIN_LOCKOUT_S = 300              # Wachtperiode (5 min) na de laatste foute poging
 LOITER_DISTANCE_CM = 40.0        # Dichterbij dan dit = loitering
+LOITER_ALARM_S = 60.0            # Zo lang voor de kluis staan zonder iets te doen = alarm
+PERIMETER_STALE_S = 10.0         # Afstandsmeting ouder dan dit wordt genegeerd (Pico offline)
 
 TELEMETRY_INTERVAL_S = 15.0      # ThingSpeak-limiet: minstens 15 s tussen updates
 
@@ -39,6 +41,9 @@ class VaultState:
         self.temp_c = 20.0
         self.perimeter_cm = 999.0
         self.loitering_alert = False
+        self.perimeter_ts = 0.0         # monotonic tijdstip van de laatste afstandsmeting
+        self.loiter_since = None        # monotonic tijdstip waarop iemand dichtbij kwam staan
+        self.last_activity = 0.0        # laatste draai of knopdruk (monotonic)
         self.alarm_reason = ""
         self.unlock_executed = False    # Stappenmotor 1x draaien per ontgrendeling
         self.lock_executed = True       # Stappenmotor 1x terugdraaien per vergrendeling

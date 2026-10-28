@@ -1,3 +1,4 @@
 .env
+pico_2w/settings.toml
 __pycache__/
 .pyc

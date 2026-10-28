@@ -43,6 +43,8 @@ from vault_state import (
     WRONG_PIN_BLINK_S,
     PIN_LOCKOUT_S,
     LOITER_DISTANCE_CM,
+    LOITER_ALARM_S,
+    PERIMETER_STALE_S,
     TELEMETRY_INTERVAL_S,
     MODE_CODES,
 )
@@ -78,6 +80,7 @@ def thread_button():
 
             if pressed and not last_pressed:
                 with state.lock:
+                    state.last_activity = time.monotonic()
                     if state.mode == "PIN_INPUT":
                         state.entered_pin.append(state.current_digit)
                         print(f"[CIJFERSLOT] Cijfer bevestigd: {state.current_digit} -> Invoer: {state.entered_pin}")
@@ -155,6 +158,8 @@ def thread_sensors_and_display():
             lux = sensors.lees_licht()
 
             with state.lock:
+                if last_digit != state.current_digit:
+                    state.last_activity = time.monotonic()
                 state.current_digit = last_digit
                 state.temp_c = temp_c
                 state.lux = lux
@@ -174,10 +179,25 @@ def thread_sensors_and_display():
                     state.mode = "ALARM"
                     state.alarm_reason = f"BRAAK! ({int(lux)} lx)"
 
+                # Loitering: iemand staat te lang voor de kluis zonder de draaiknop of knop te gebruiken
+                nu = time.monotonic()
+                dichtbij = state.loitering_alert and (nu - state.perimeter_ts) < PERIMETER_STALE_S
+                if not dichtbij or state.mode != "PIN_INPUT":
+                    state.loiter_since = None
+                else:
+                    if state.loiter_since is None:
+                        state.loiter_since = nu
+                    if nu - max(state.loiter_since, state.last_activity) >= LOITER_ALARM_S:
+                        print(f"[LOITER] Persoon > {LOITER_ALARM_S:.0f}s zonder actie voor de kluis!")
+                        state.mode = "ALARM"
+                        state.alarm_reason = "LOITER > 1 MIN"
+                        state.loiter_since = None
+
                 mode = state.mode
                 digit = state.current_digit
                 pin_so_far = list(state.entered_pin)
                 loitering = state.loitering_alert
+                afstand_cm = state.perimeter_cm if (time.monotonic() - state.perimeter_ts) < PERIMETER_STALE_S else None
                 reason = state.alarm_reason
                 now = time.monotonic()
                 if state.mode == "LOCKOUT" and now >= state.lockout_until:
@@ -202,7 +222,8 @@ def thread_sensors_and_display():
                     alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
                     toon_fout=toon_fout,
                     pogingen_over=pogingen_over,
-                    wachttijd_s=wachttijd_s
+                    wachttijd_s=wachttijd_s,
+                    afstand_cm=afstand_cm
                 )
 
         except Exception as e:
@@ -374,6 +395,7 @@ def thread_voice():
 def on_perimeter_afstand(dist_cm):
     with state.lock:
         state.perimeter_cm = dist_cm
+        state.perimeter_ts = time.monotonic()
         state.loitering_alert = (dist_cm < LOITER_DISTANCE_CM)
 
 

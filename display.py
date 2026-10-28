@@ -195,7 +195,8 @@ class Display:
         alarm_veilig,
         toon_fout=False,
         pogingen_over=0,
-        wachttijd_s=0
+        wachttijd_s=0,
+        afstand_cm=None
     ):
         """Teken het kluisscherm voor de huidige modus (PIN, 2FA, open, alarm)."""
 
@@ -206,9 +207,10 @@ class Display:
         draw = ImageDraw.Draw(image)
         font = self.font
 
-        top_bar = f"L:{int(lux)}lx T:{temp_c:.1f}C"
+        top_bar = f"L:{int(lux)} T:{temp_c:.1f}C "
+        top_bar += f"A:{afstand_cm:.0f}cm" if afstand_cm is not None else "A:--cm"
         if loitering:
-            top_bar += " [LOITER!]"
+            top_bar += "!"
         draw.text((2, 0), top_bar, font=font, fill=255)
         draw.line((0, 12, 127, 12), fill=255)
 
