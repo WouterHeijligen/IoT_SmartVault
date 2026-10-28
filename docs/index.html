@@ -60,8 +60,8 @@
           <tr><td>Lock mechanism</td><td>Relay interlock and stepper driven by the vault state.</td></tr>
           <tr><td>Alarms</td><td>Fire and tamper (light) detection, siren and ntfy push notification.</td></tr>
           <tr><td>ThingSpeak</td><td>MQTT telemetry using credentials from <code>.env</code>.</td></tr>
-          <tr><td>Pico perimeter node</td><td>The Pi subscribes to <code>vault/perimeter/distance</code> on a local broker;
-            no Pico firmware is in this repository.</td></tr>
+          <tr><td>Pico perimeter node</td><td>CircuitPython firmware in <code>pico_2w/</code> publishes the RCWL-9610A
+            distance to <code>vault/perimeter/distance</code>; the Pi subscribes on a local broker.</td></tr>
           <tr><td>Voice recognition</td><td>Placeholder class; second factor is bypassed by default.</td></tr>
         </tbody>
       </table>

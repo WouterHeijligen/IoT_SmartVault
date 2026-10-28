@@ -63,9 +63,24 @@ python3 main.py</code></pre>
       for all three digits. The PIN, thresholds, lockout time and voice bypass are
       set at the top of <code>vault_state.py</code>. Press <kbd>Ctrl+C</kbd> to stop;
       use <code>deactivate</code> to leave the environment.</p>
-    <p>The Pico perimeter node publishes its distance to an MQTT broker running on the Pi
-      (<code>127.0.0.1:1883</code>, topic <code>vault/perimeter/distance</code>). Install and start
-      a broker such as Mosquitto if you use it; without one the vault logs a warning and continues.</p>
+    <p>The Pico 2 W perimeter node publishes its distance to an MQTT broker running on the Pi
+      (topic <code>vault/perimeter/distance</code>); the vault subscribes on <code>127.0.0.1:1883</code>.
+      Install and start a broker such as Mosquitto; without one the vault logs a warning and continues.</p>
+    <h2>Pico 2 W perimeter node</h2>
+    <ol>
+      <li>Flash CircuitPython 11.x on the Pico 2 W and copy <code>pico_2w/code.py</code> to the
+        <code>CIRCUITPY</code> drive.</li>
+      <li>Copy <code>pico_2w/settings.toml.example</code> to <code>settings.toml</code> on the drive and set the
+        Wi-Fi name, password and the Pi's IP address (<code>hostname -I</code>). Keep this file out of Git.</li>
+      <li>Copy <code>adafruit_hcsr04</code>, <code>adafruit_minimqtt</code>,
+        <code>adafruit_connection_manager</code> and <code>adafruit_ticks</code> from the Adafruit
+        CircuitPython bundle to <code>lib/</code>.</li>
+      <li>Let Mosquitto accept the Pico: add <code>listener 1883</code> and
+        <code>allow_anonymous true</code> in <code>/etc/mosquitto/conf.d/pico.conf</code> and run
+        <code>sudo systemctl restart mosquitto</code>. Only do this on a closed project network.</li>
+      <li>Check with <code>mosquitto_sub -t vault/perimeter/distance</code>. The Pi and Pico must be on the same
+        Wi-Fi network. Wiring is listed on the <a href="hardware.html">hardware page</a>.</li>
+    </ol>
     <h2>Reading the potentiometer</h2>
     <p>Adafruit's <code>AnalogIn.value</code> is 16-bit scaled although the MCP3008 is a
       10-bit ADC. <code>sensors.py</code> shifts it back to 0-1023 and <code>main.py</code>
