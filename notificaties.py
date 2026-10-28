@@ -45,6 +45,13 @@ class Notificaties:
                 print(f"[AUDIO] Bluetooth-controle mislukt: {e}")
             time.sleep(30)
 
+    def stop_sirene(self):
+        """Stopt de sirene meteen (na reset van het alarm)."""
+
+        with self._sirene_lock:
+            if self._sirene_proces and self._sirene_proces.poll() is None:
+                self._sirene_proces.terminate()
+
     def sirene(self):
         """Speelt sirene.wav af via de standaard audio-uitvoer (non-blocking, geen overlap)."""
 

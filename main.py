@@ -299,6 +299,10 @@ def thread_actuators():
                 notificaties.sirene()
                 last_siren_time = time.time()
 
+        if mode == "PIN_INPUT" and last_siren_time:
+            notificaties.stop_sirene()
+            last_siren_time = 0.0
+
         time.sleep(0.03)  # Snel genoeg voor een vloeiend zwaailicht
 
 
