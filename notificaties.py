@@ -62,10 +62,19 @@ class Notificaties:
                 self._sirene_proces = subprocess.Popen(
                     ["pw-play", self.sirene_bestand],
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
                 )
+                threading.Thread(
+                    target=self._meld_sirene_fout, args=(self._sirene_proces,), daemon=True
+                ).start()
             except Exception as e:
                 print(f"[AUDIO] Kon sirene niet afspelen: {e}")
+
+    def _meld_sirene_fout(self, proces):
+        fout = proces.communicate()[1]
+        if proces.returncode not in (0, -15):
+            print(f"[AUDIO] pw-play faalde ({proces.returncode}): {fout.strip()}")
 
     def stuur_push(self, bericht):
         """Stuurt een push-notificatie naar je smartphone via ntfy.sh."""
