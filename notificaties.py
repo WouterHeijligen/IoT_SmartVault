@@ -2,6 +2,8 @@
 
 import os
 import subprocess
+import threading
+import time
 
 import requests
 from dotenv import load_dotenv
@@ -14,6 +16,49 @@ class Notificaties:
 
     def __init__(self):
         self.topic = os.getenv("NTFY_TOPIC", "tm_smart_vault_bart_2026")
+        self.speaker_mac = os.getenv("BT_SPEAKER_MAC", "33:A8:8C:0F:CC:A0")
+        self.sirene_bestand = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "sirene.wav"
+        )
+        self._sirene_proces = None
+        self._sirene_lock = threading.Lock()
+
+    def start_speaker_verbinding(self):
+        """Houdt de Bluetooth speaker verbonden (verbindt opnieuw na uitval)."""
+
+        threading.Thread(target=self._speaker_loop, daemon=True).start()
+
+    def _speaker_loop(self):
+        while True:
+            try:
+                info = subprocess.run(
+                    ["bluetoothctl", "info", self.speaker_mac],
+                    capture_output=True, text=True, timeout=10,
+                ).stdout
+                if "Connected: yes" not in info:
+                    print(f"[AUDIO] Speaker {self.speaker_mac} niet verbonden, opnieuw verbinden...")
+                    subprocess.run(
+                        ["bluetoothctl", "connect", self.speaker_mac],
+                        capture_output=True, text=True, timeout=20,
+                    )
+            except Exception as e:
+                print(f"[AUDIO] Bluetooth-controle mislukt: {e}")
+            time.sleep(30)
+
+    def sirene(self):
+        """Speelt sirene.wav af via de standaard audio-uitvoer (non-blocking, geen overlap)."""
+
+        with self._sirene_lock:
+            if self._sirene_proces and self._sirene_proces.poll() is None:
+                return
+            try:
+                self._sirene_proces = subprocess.Popen(
+                    ["pw-play", self.sirene_bestand],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as e:
+                print(f"[AUDIO] Kon sirene niet afspelen: {e}")
 
     def stuur_push(self, bericht):
         """Stuurt een push-notificatie naar je smartphone via ntfy.sh."""
@@ -39,15 +84,3 @@ class Notificaties:
 
         except Exception as e:
             print(f"[NTFY FOUT] Kon push alert niet versturen: {e}")
-
-    def sirene(self):
-        """Speelt een waarschuwingsgeluid af (non-blocking)."""
-
-        try:
-            subprocess.Popen(
-                ["speaker-test", "-t", "sine", "-f", "880", "-l", "1"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except Exception as e:
-            print(f"[AUDIO] Kon Bluetooth sirene niet afspelen: {e}")

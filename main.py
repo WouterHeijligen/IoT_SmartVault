@@ -59,6 +59,7 @@ vault = VaultLock()
 display = Display(spi=sensors.spi)
 voice = VoiceRecognition()
 notificaties = Notificaties()
+notificaties.start_speaker_verbinding()
 
 try:
     mqtt = MQTTClient()
