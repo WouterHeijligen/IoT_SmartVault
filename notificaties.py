@@ -60,7 +60,7 @@ class Notificaties:
                 return
             try:
                 self._sirene_proces = subprocess.Popen(
-                    ["pw-play", self.sirene_bestand],
+                    self._sirene_commando(),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -70,6 +70,19 @@ class Notificaties:
                 ).start()
             except Exception as e:
                 print(f"[AUDIO] Kon sirene niet afspelen: {e}")
+
+    def _sirene_commando(self):
+        """Onder sudo zit root niet in de audiosessie: speel af als de oorspronkelijke gebruiker."""
+
+        sudo_user = os.getenv("SUDO_USER")
+        if os.geteuid() == 0 and sudo_user:
+            uid = os.getenv("SUDO_UID", "1000")
+            return [
+                "sudo", "-u", sudo_user,
+                f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                "pw-play", self.sirene_bestand,
+            ]
+        return ["pw-play", self.sirene_bestand]
 
     def _meld_sirene_fout(self, proces):
         fout = proces.communicate()[1]
