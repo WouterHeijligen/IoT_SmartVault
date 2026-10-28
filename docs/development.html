@@ -13,23 +13,24 @@
       <a href="index.html">Overview</a>
       <a href="hardware.html">Hardware</a>
       <a href="setup.html">Setup</a>
+      <a href="code.html">Code</a>
       <a href="development.html" aria-current="page">Development</a>
     </nav>
   </header>
   <main>
     <h1>Documentation and development</h1>
     <h2>Source layout</h2>
-    <p><code>main.py</code> runs the vault state machine in four threads (button,
-      sensors and OLED, actuators, cloud). Supporting modules:
+    <p><code>main.py</code> runs the vault state machine in five threads (button,
+      sensors and OLED, actuators, cloud, voice). Supporting modules:
       <code>vault_state.py</code> (configuration and shared state),
       <code>sensors.py</code> (potentiometer, LM35, BH1750),
       <code>display.py</code> (OLED screens), <code>zwaailicht.py</code> (RGB LED and
       blue/red zwaailicht fade), <code>vault_lock.py</code> (relay and stepper),
       <code>mqtt_client.py</code> (ThingSpeak telemetry and the local perimeter subscriber),
       <code>notificaties.py</code> (ntfy push and siren).
-      <code>voice.py</code> is currently a placeholder. The <code>model-en/</code>
-      and <code>model-nl/</code> folders contain speech model assets, but the voice
-      class does not load them yet.</p>
+      <code>voice.py</code> runs Vosk speech recognition for the second factor
+      (<code>model-en/</code> by default; <code>model-nl/</code> is available). See the
+      <a href="code.html">Code page</a> for a full walkthrough.</p>
     <h2>Edit and preview the site</h2>
     <p>The site is plain HTML and CSS in <code>docs/</code>: no theme, generator,
       or package installation is required. Use relative links so the site works

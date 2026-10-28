@@ -1,3 +1,32 @@
+"""
+Perimeter-sensor van de Smart Vault (Raspberry Pi Pico 2 W, CircuitPython).
+
+Rol van dit bestand:
+    Draait als ``code.py`` op de Pico 2 W en meet continu de afstand tot
+    personen voor de kluis. Elke 0,5 s wordt de afstand in cm via MQTT naar de
+    Raspberry Pi gestuurd, waar main.py loitering (te lang dichtbij staan)
+    mee detecteert.
+
+Werking, stap voor stap:
+    1. Initialiseer de ultrasone sensor.
+    2. Verbind met Wi-Fi en daarna met de MQTT-broker.
+    3. Eindeloze lus: controleer Wi-Fi, meet afstand, publiceer, wacht.
+    4. Bij fouten wordt opnieuw verbonden in plaats van te crashen.
+
+Hardware en bibliotheken:
+    * RCWL-9610A in trigger/echo-modus via ``adafruit_hcsr04`` (HC-SR04
+      compatibel): TRIG op GP27, ECHO op GP28.
+    * ``wifi``/``socketpool`` (CircuitPython) en ``adafruit_minimqtt`` voor
+      MQTT; MQTT is licht en geschikt voor een microcontroller.
+    * Instellingen (MQTT_BROKER, MQTT_TOPIC, Wi-Fi) uit settings.toml via
+      ``os.getenv``, zodat geen geheimen in de code staan.
+
+Threads en gedeelde toestand:
+    Eén enkele lus zonder threads of locks; geen gedeelde state. De Pi leest
+    de waarde en gebruikt ``PERIMETER_STALE_S`` om te detecteren dat de Pico
+    offline is. Het bericht is bewust alleen een getal in tekst (bv. "123.4").
+"""
+
 import os
 import time
 
@@ -16,6 +45,28 @@ PUBLISH_INTERVAL_S = 0.5
 
 
 def connect_wifi():
+    """
+    Verbind met Wi-Fi en blokkeer tot dat gelukt is.
+
+    Werking:
+        Zolang ``wifi.radio.connected`` False is: probeer te verbinden met
+        SSID/wachtwoord uit settings.toml; bij een fout wordt de melding
+        getoond en wacht de functie 2 s voor een nieuwe poging. Print daarna
+        het IP-adres.
+
+    Parameters:
+        Geen.
+
+    Returns:
+        None
+
+    Threads/locks:
+        Geen threads; blokkeert de hoofdlus tot er verbinding is, wat hier
+        bewust is: zonder netwerk valt niets te publiceren.
+
+    Hardware/bibliotheken:
+        Ingebouwde Wi-Fi van de Pico 2 W via CircuitPython ``wifi``.
+    """
     while not wifi.radio.connected:
         try:
             print("Wi-Fi verbinden...")
@@ -30,6 +81,29 @@ def connect_wifi():
 
 
 def connect_mqtt():
+    """
+    Maak een MQTT-client en verbind met de broker.
+
+    Werking:
+        Maakt een ``MQTT.MQTT``-client met broker uit ``MQTT_BROKER``, poort
+        1883 (onversleuteld, lokaal netwerk), een socketpool op de Wi-Fi-radio
+        en vaste client_id "pico_perimeter" (zodat een herverbinding de oude
+        sessie vervangt in plaats van dubbele clients te maken). Verbindt en
+        print de broker.
+
+    Parameters:
+        Geen.
+
+    Returns:
+        MQTT.MQTT: de verbonden client; de aanroeper bewaart deze in ``mqtt``.
+
+    Threads/locks:
+        Geen; kan een uitzondering gooien als de broker onbereikbaar is, die
+        de hoofdlus afvangt.
+
+    Hardware/bibliotheken:
+        adafruit_minimqtt en socketpool over de Wi-Fi-radio.
+    """
     client = MQTT.MQTT(
         broker=MQTT_BROKER,
         port=1883,
@@ -43,7 +117,10 @@ def connect_mqtt():
 
 connect_wifi()
 mqtt = connect_mqtt()
-
+
+# Hoofdlus: meet en publiceer elke PUBLISH_INTERVAL_S. RuntimeError van de
+# sensor (geen echo) is normaal en wordt overgeslagen; elke andere fout
+# betekent verbindingsverlies en triggert herverbinden.
 while True:
     try:
         if not wifi.radio.connected:
