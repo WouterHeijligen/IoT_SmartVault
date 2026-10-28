@@ -197,6 +197,7 @@ def thread_sensors_and_display():
                 digit = state.current_digit
                 pin_so_far = list(state.entered_pin)
                 loitering = state.loitering_alert
+                afstand_cm = state.perimeter_cm if (time.monotonic() - state.perimeter_ts) < PERIMETER_STALE_S else None
                 reason = state.alarm_reason
                 now = time.monotonic()
                 if state.mode == "LOCKOUT" and now >= state.lockout_until:
@@ -221,7 +222,8 @@ def thread_sensors_and_display():
                     alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
                     toon_fout=toon_fout,
                     pogingen_over=pogingen_over,
-                    wachttijd_s=wachttijd_s
+                    wachttijd_s=wachttijd_s,
+                    afstand_cm=afstand_cm
                 )
 
         except Exception as e:
