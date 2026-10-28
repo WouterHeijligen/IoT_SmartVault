@@ -207,8 +207,8 @@ class Display:
         draw = ImageDraw.Draw(image)
         font = self.font
 
-        top_bar = f"{int(lux)}lx {temp_c:.1f}C "
-        top_bar += f"{afstand_cm:.0f}cm" if afstand_cm is not None else "--cm"
+        top_bar = f"L:{int(lux)} T:{temp_c:.1f}C "
+        top_bar += f"A:{afstand_cm:.0f}cm" if afstand_cm is not None else "A:--cm"
         if loitering:
             top_bar += "!"
         draw.text((2, 0), top_bar, font=font, fill=255)
