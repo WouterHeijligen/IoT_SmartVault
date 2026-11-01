@@ -67,8 +67,8 @@ class Notificaties:
             Maakt ``_sirene_lock`` aan, die ``_sirene_proces`` beschermt
             tegen gelijktijdige toegang.
         """
-        self.topic = os.getenv("NTFY_TOPIC", "tm_smart_vault_bart_2026")
-        self.speaker_mac = os.getenv("BT_SPEAKER_MAC", "33:A8:8C:0F:CC:A0")
+        self.topic = os.getenv("NTFY_TOPIC")
+        self.speaker_mac = os.getenv("BT_SPEAKER_MAC")
         self.sirene_bestand = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "sirene.wav"
         )
