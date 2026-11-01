@@ -47,7 +47,7 @@ class VaultLockTests(unittest.TestCase):
     def test_motion_preserves_active_low_relay_and_step_contract(self):
         self.assertTrue(self.vault.relais.value)
         self.assertTrue(all(not coil.value for coil in self.vault.coils))
-        for method, direction in ((self.vault.open, True), (self.vault.sluit, False)):
+        for method, direction in ((self.vault.open, False), (self.vault.sluit, True)):
             with self.subTest(direction=direction):
                 def check_motion(*, stappen, vooruit):
                     self.assertFalse(self.vault.relais.value)

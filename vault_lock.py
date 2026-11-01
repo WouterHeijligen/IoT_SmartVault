@@ -13,7 +13,7 @@ Hardware en bibliotheken:
     * Relais is active-low: GPIO laag = relais aan.
 
 Threads en gedeelde toestand:
-    Geen eigen threads of locks. open()/sluit() blokkeren ~10 s; ze worden
+    Geen eigen threads of locks. open()/sluit() blokkeren ~31 s; ze worden
     aangeroepen vanuit de actuator-thread van main.py, die ``motor_busy`` in
     ``VaultState`` bijhoudt. stroomloos() mag ook uit andere threads (bv. bij
     alarm of afsluiten) worden aangeroepen.
@@ -105,7 +105,8 @@ class VaultLock:
 
         Parameters:
             stappen (int): aantal te zetten stappen.
-            vooruit (bool): True = openrichting, False = sluitrichting.
+            vooruit (bool): True = normale sequentie (sluiten),
+                False = omgekeerde sequentie (openen).
 
         Returns:
             None
@@ -148,12 +149,12 @@ class VaultLock:
 
     def open(self):
         """
-        Open de kluis: relais aan, motor 3072 stappen vooruit, relais uit.
+        Open de kluis: relais aan, motor 3072 stappen omgekeerd, relais uit.
 
         Werking, stap voor stap:
             1. Schakel het relais in (voeding motor).
             2. Wacht 0.25 s zodat de voeding stabiel is.
-            3. Draai 1024 stappen vooruit via _draai().
+            3. Draai 3072 stappen met vooruit=False via _draai().
             4. Schakel het relais uit (motor weer stroomloos).
 
         Parameters:
@@ -163,7 +164,7 @@ class VaultLock:
             None
 
         Threads/locks:
-            Blokkeert ~10 s. Wordt vanuit de actuator-thread aangeroepen
+            Blokkeert ~31 s. Wordt vanuit de actuator-thread aangeroepen
             terwijl ``VaultState.motor_busy`` True is.
 
         Hardware/bibliotheken:
@@ -190,11 +191,11 @@ class VaultLock:
 
     def sluit(self):
         """
-        Sluit de kluis: relais aan, motor 3072 stappen achteruit, relais uit.
+        Sluit de kluis: relais aan, motor 3072 stappen normaal, relais uit.
 
         Werking:
-            Spiegelbeeld van open(): relais aan, 0.25 s wachten, 1024 stappen
-            in omgekeerde sequentie, relais uit. Hetzelfde aantal stappen
+            Spiegelbeeld van open(): relais aan, 0.25 s wachten, 3072 stappen
+            met vooruit=True, relais uit. Hetzelfde aantal stappen
             brengt de deur precies terug in de uitgangspositie.
 
         Parameters:
@@ -204,7 +205,7 @@ class VaultLock:
             None
 
         Threads/locks:
-            Blokkeert ~10 s; aanroeper (actuator-thread) beheert
+            Blokkeert ~31 s; aanroeper (actuator-thread) beheert
             ``motor_busy``.
 
         Hardware/bibliotheken:

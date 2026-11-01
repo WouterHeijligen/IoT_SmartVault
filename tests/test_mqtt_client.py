@@ -32,14 +32,21 @@ class TelemetryTests(unittest.TestCase):
         client.client = Mock()
         client.client.publish.return_value.rc = 0
 
-        self.assertTrue(client.stuur_telemetrie(42.0, 21.5, 123.4, 2, "UNLOCKED"))
-
-        client.client.publish.assert_called_once_with(
-            topic="channels/test/publish",
-            payload="field1=42.0&field2=21.50&field3=123.4&field4=2&status=UNLOCKED",
-            qos=0,
-            retain=False,
-        )
+        for digit in (0, 5, 9):
+            with self.subTest(digit=digit):
+                client.client.reset_mock()
+                self.assertTrue(
+                    client.stuur_telemetrie(42.0, 21.5, 123.4, 2, "UNLOCKED", digit)
+                )
+                client.client.publish.assert_called_once_with(
+                    topic="channels/test/publish",
+                    payload=(
+                        "field1=42.0&field2=21.50&field3=123.4&field4=2"
+                        f"&field5={digit}&status=UNLOCKED"
+                    ),
+                    qos=0,
+                    retain=False,
+                )
 
 
 if __name__ == "__main__":

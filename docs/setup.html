@@ -51,8 +51,13 @@ NTFY_TOPIC=your_own_topic_name</code></pre>
       instead of publishing it.</p>
     <p>The MQTT client targets <code>mqtt3.thingspeak.com:1883</code>, publishing
       to <code>channels/&lt;channel_id&gt;/publish</code>. Fields: <code>field1</code> light (lux),
-      <code>field2</code> temperature (&deg;C), <code>field3</code> perimeter distance (cm) and
-      <code>field4</code> vault status (0 locked, 1 second factor, 2 open, 3 alarm, 4 lockout).</p>
+      <code>field2</code> temperature (&deg;C), <code>field3</code> perimeter distance (cm),
+      <code>field4</code> vault status (0 locked, 1 second factor, 2 open, 3 alarm, 4 lockout) and
+      <code>field5</code> selected potentiometer digit (0-9, after hysteresis, as on the OLED).</p>
+    <p>Enable field 5 in the ThingSpeak channel settings and label it
+      <strong>Selected digit (0-9)</strong>. This is not resistance or a raw ADC value.
+      It is sampled at the existing 15-second telemetry interval, not on every turn.
+      Be aware that the selected PIN digit is sent to the cloud.</p>
     <p>For the sonar chart, select <code>field3</code> and label the axis
       <strong>Distance (cm)</strong>. The distance is not converted to a status code;
       <code>field4</code> shows the vault state, not the sonar measurement.</p>
