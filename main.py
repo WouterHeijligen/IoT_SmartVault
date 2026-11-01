@@ -472,7 +472,7 @@ def thread_cloud():
         vertraging de besturing niet blokkeert.
 
     Werking (stap voor stap):
-        1. Onder ``state.lock``: snapshot van mode, lux, temp_c, afstand en
+        1. Onder ``state.lock``: snapshot van mode, lux, temp_c, afstand, cijfer en
            alarmreden. Bij ALARM zonder ``alarm_notified`` wordt die vlag gezet
            (push slechts 1x per alarm); ``lockout_push_pending`` wordt gelezen
            en gewist.
@@ -485,7 +485,7 @@ def thread_cloud():
     Retourwaarde: geen (loopt tot ``state.running`` False wordt).
 
     Gedeelde state / threads:
-        Leest mode/lux/temp_c/perimeter_cm/alarm_reason, schrijft alarm_notified
+        Leest mode/lux/temp_c/perimeter_cm/current_digit/alarm_reason, schrijft alarm_notified
         en lockout_push_pending onder ``state.lock``. Geen SPI.
 
     Hardware/bibliotheek:
@@ -503,6 +503,7 @@ def thread_cloud():
             lux = state.lux
             temp_c = state.temp_c
             dist = state.perimeter_cm
+            digit = state.current_digit
             reason = state.alarm_reason
             should_alert = (mode == "ALARM" and not state.alarm_notified)
             if should_alert:
@@ -523,11 +524,13 @@ def thread_cloud():
 
         if time.time() - last_push >= TELEMETRY_INTERVAL_S:
             if mqtt is not None:
-                mqtt.stuur_telemetrie(lux, temp_c, dist, MODE_CODES.get(mode, 0), mode)
+                mqtt.stuur_telemetrie(
+                    lux, temp_c, dist, MODE_CODES.get(mode, 0), mode, digit
+                )
             else:
                 print(
                     f"[THINGSPEAK - Geen .env credentials] Lux={lux:.1f}, "
-                    f"Temp={temp_c:.1f}C, Afstand={dist:.1f}cm, Mode={mode}"
+                    f"Temp={temp_c:.1f}C, Afstand={dist:.1f}cm, Mode={mode}, Cijfer={digit}"
                 )
             last_push = time.time()
 

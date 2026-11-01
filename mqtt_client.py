@@ -269,7 +269,7 @@ class MQTTClient:
     # Telemetrie van de volledige kluis versturen
     # ---------------------------------------------------------
 
-    def stuur_telemetrie(self, lux, temperatuur, afstand_cm, status_code, status):
+    def stuur_telemetrie(self, lux, temperatuur, afstand_cm, status_code, status, cijfer):
         """
         Stuurt de kluis-telemetrie naar ThingSpeak.
 
@@ -277,8 +277,9 @@ class MQTTClient:
         field2 = temperatuur (C)
         field3 = perimeter afstand (cm)
         field4 = status (0=vergrendeld, 1=2FA, 2=geopend, 3=alarm)
+        field5 = geselecteerd potmetercijfer (0-9)
 
-        Werking: bouwt een payload met vier velden plus ``status=<modus>``
+        Werking: bouwt een payload met vijf velden plus ``status=<modus>``
         en publiceert die met QoS 0 (geen retain). Het ThingSpeak-limiet van
         minstens 15 s tussen updates wordt door de aanroeper bewaakt
         (TELEMETRY_INTERVAL_S in de cloud-thread).
@@ -290,6 +291,7 @@ class MQTTClient:
             status_code (int): modus als getal, uit ``vault_state.MODE_CODES``
                 (ook 4 = LOCKOUT bestaat daar).
             status (str): modus als tekst, in het ThingSpeak-statusveld.
+            cijfer (int): geselecteerd cijfer na hysterese, zoals op het scherm.
 
         Retourwaarde: True als paho het bericht heeft aanvaard, anders False.
 
@@ -302,6 +304,7 @@ class MQTTClient:
             f"&field2={temperatuur:.2f}"
             f"&field3={afstand_cm:.1f}"
             f"&field4={status_code:d}"
+            f"&field5={cijfer:d}"
             f"&status={status}"
         )
 
