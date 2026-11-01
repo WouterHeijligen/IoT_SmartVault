@@ -53,6 +53,9 @@ NTFY_TOPIC=your_own_topic_name</code></pre>
       to <code>channels/&lt;channel_id&gt;/publish</code>. Fields: <code>field1</code> light (lux),
       <code>field2</code> temperature (&deg;C), <code>field3</code> perimeter distance (cm) and
       <code>field4</code> vault status (0 locked, 1 second factor, 2 open, 3 alarm, 4 lockout).</p>
+    <p>For the sonar chart, select <code>field3</code> and label the axis
+      <strong>Distance (cm)</strong>. The distance is not converted to a status code;
+      <code>field4</code> shows the vault state, not the sonar measurement.</p>
     <aside class="notice"><strong>Note:</strong> the configured MQTT transport is
       unencrypted; do not treat this prototype as a secure deployment.</aside>
     <h2>4. Run the vault</h2>
@@ -64,6 +67,10 @@ python3 main.py</code></pre>
       for all three digits. The PIN, thresholds, lockout time and voice bypass are
       set at the top of <code>vault_state.py</code>. Press <kbd>Ctrl+C</kbd> to stop;
       use <code>deactivate</code> to leave the environment.</p>
+    <p>Voice verification uses the English model in <code>model-en/</code> by default
+      and the spoken passphrase <strong>open</strong>. If <code>VOSK_MODEL</code>
+      is configured in the environment or <code>.env</code>, it overrides that
+      model path; remove the override or point it to your <code>model-en/</code> folder.</p>
     <p>The Pico 2 W perimeter node publishes its distance to an MQTT broker running on the Pi
       (topic <code>vault/perimeter/distance</code>); the vault subscribes on <code>127.0.0.1:1883</code>.
       Install and start a broker such as Mosquitto; without one the vault logs a warning and continues.</p>

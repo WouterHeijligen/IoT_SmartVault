@@ -26,7 +26,7 @@ SECRET_PIN = [4, 7, 2]           # De 3-cijferige kluiscode (in te voeren via po
 # blijven in productie, anders vervalt de tweede factor.
 BYPASS_VOICE_2FA = False         # True slaat de spraakstap over (zonder USB-microfoon)
 # Dezelfde zin wordt als enige toegestane grammatica in Vosk geladen.
-VOICE_PASSPHRASE = "open sesam"  # Geheime gesproken passphrase voor Factor 2
+VOICE_PASSPHRASE = "open"  # Geheime gesproken passphrase voor Factor 2
 # 20 s geeft genoeg tijd om te spreken zonder dat de kluis lang half-open blijft.
 VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis terugvalt naar PIN-invoer
 
