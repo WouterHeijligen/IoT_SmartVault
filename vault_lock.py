@@ -181,16 +181,16 @@ class VaultLock:
 
         self._draai(
             stappen=3072,
-            vooruit=True
+            vooruit=False
         )
 
         self.relais.value = True
-
+    
         print("Kluis geopend")
 
     def sluit(self):
         """
-        Sluit de kluis: relais aan, motor 1024 stappen achteruit, relais uit.
+        Sluit de kluis: relais aan, motor 3072 stappen achteruit, relais uit.
 
         Werking:
             Spiegelbeeld van open(): relais aan, 0.25 s wachten, 1024 stappen
@@ -218,7 +218,7 @@ class VaultLock:
 
         self._draai(
             stappen=3072,
-            vooruit=False
+            vooruit=True
         )
 
         self.relais.value = True
