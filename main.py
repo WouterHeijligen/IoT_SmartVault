@@ -371,7 +371,7 @@ def thread_actuators():
            VOICE_2FA -> oranje. UNLOCKED -> groen. ALARM -> stroomloos,
            zwaailicht en elke 4 s de sirene.
         4. Terug in PIN_INPUT na een alarm: sirene stoppen.
-        5. Slaap 30 ms voor een vloeiend zwaailicht.
+        5. Slaap 30 ms tussen updates.
 
     Parameters: geen.
     Retourwaarde: geen (loopt tot ``state.running`` False wordt).
@@ -392,8 +392,6 @@ def thread_actuators():
         langzame motorwerk gebeurt nooit onder de lock.
     """
     last_siren_time = 0.0
-    alarm_led_on = False
-    next_alarm_toggle = 0.0
 
     while state.running:
         with state.lock:
@@ -434,7 +432,7 @@ def thread_actuators():
             with state.lock:
                 foute_code = time.monotonic() < state.wrong_pin_until
             if foute_code:
-                licht.zwaai()
+                licht.knipper_rood()
             elif mode == "LOCKOUT":
                 licht.kleur_procent(30, 0, 0)  # Zacht rood tijdens wachtperiode
             else:
@@ -448,27 +446,17 @@ def thread_actuators():
 
         elif mode == "ALARM":
             vault.stroomloos()
-            now = time.monotonic()
-            if now >= next_alarm_toggle:
-                alarm_led_on = not alarm_led_on
-                if alarm_led_on:
-                    licht.kleur_procent(100, 0, 0)
-                else:
-                    licht.uit()
-                next_alarm_toggle = now + 0.15
+            licht.knipper_rood()
 
             if time.time() - last_siren_time > 4.0:
                 notificaties.sirene()
                 last_siren_time = time.time()
-        else:
-            alarm_led_on = False
-            next_alarm_toggle = 0.0
 
         if mode == "PIN_INPUT" and last_siren_time:
             notificaties.stop_sirene()
             last_siren_time = 0.0
 
-        time.sleep(0.03)  # Snel genoeg voor een vloeiend zwaailicht
+        time.sleep(0.03)
 
 
 # ==============================================================================
