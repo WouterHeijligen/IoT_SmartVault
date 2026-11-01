@@ -152,7 +152,7 @@ class VaultLock:
 
     def open(self):
         """
-        Open de kluis: relais aan, motor 1024 stappen vooruit, relais uit.
+        Open de kluis: relais aan, motor 3072 stappen vooruit, relais uit.
 
         Werking, stap voor stap:
             1. Schakel het relais in (voeding motor).
@@ -184,7 +184,7 @@ class VaultLock:
         time.sleep(0.25)
 
         self._draai(
-            stappen=1024,
+            stappen=3072,
             vooruit=True
         )
 
@@ -221,7 +221,7 @@ class VaultLock:
         time.sleep(0.25)
 
         self._draai(
-            stappen=1024,
+            stappen=3072,
             vooruit=False
         )
 
