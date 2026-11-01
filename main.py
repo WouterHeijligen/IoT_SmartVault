@@ -48,7 +48,8 @@ Threading-model en locks
 import threading
 import time
 
-from gpiozero import Button
+import board
+import digitalio
 
 from zwaailicht import Zwaailicht
 from sensors import Sensors
@@ -79,7 +80,8 @@ from vault_state import (
 
 state = VaultState()
 
-button = Button(4, pull_up=True)
+button = digitalio.DigitalInOut(board.D4)
+button.switch_to_input(pull=digitalio.Pull.UP)
 
 licht = Zwaailicht()
 sensors = Sensors()
@@ -107,7 +109,7 @@ def thread_button():
         gekozen (Factor 1) of stuurt de kluis terug naar de vergrendelde modus.
 
     Werking (stap voor stap):
-        1. Lees ``button.is_pressed`` (gpiozero, pull-up: ingedrukt = actief).
+        1. Lees ``not button.value`` (digitalio, pull-up: laag = ingedrukt).
         2. Flankdetectie: alleen de overgang losgelaten -> ingedrukt telt, zodat
            vasthouden niet meerdere cijfers invoert.
         3. Onder ``state.lock`` wordt afhankelijk van ``state.mode`` gehandeld:
@@ -134,7 +136,7 @@ def thread_button():
         cloud-thread. Geen SPI-gebruik.
 
     Hardware/bibliotheek:
-        gpiozero.Button met interne pull-up (knop schakelt naar GND).
+        digitalio.DigitalInOut met interne pull-up (knop schakelt naar GND).
 
     Ontwerpkeuzes:
         De debounce-sleep gebeurt buiten de lock zodat andere threads niet
@@ -145,7 +147,7 @@ def thread_button():
 
     while state.running:
         try:
-            pressed = button.is_pressed
+            pressed = not button.value
 
             if pressed and not last_pressed:
                 with state.lock:
@@ -715,7 +717,7 @@ def main():
         display.close()
         sensors.close()
         voice.close()
-        button.close()
+        button.deinit()
 
         print("[SHUTDOWN] Voltooid.")
 

@@ -8,8 +8,8 @@ Rol van dit bestand:
     GPIO-pinnen (spoelen) aangestuurd.
 
 Hardware en bibliotheken:
-    * ``gpiozero.OutputDevice`` voor alle uitgangen: relais op GPIO 24 en
-      spoelen op GPIO 17, 27, 22 en 23 (gpiozero werkt op de Pi 5).
+    * ``digitalio.DigitalInOut`` voor relais op GPIO 24 en
+      spoelen op GPIO 17, 27, 22 en 23.
     * Relais is active-low: GPIO laag = relais aan.
 
 Threads en gedeelde toestand:
@@ -20,7 +20,8 @@ Threads en gedeelde toestand:
 """
 
 import time
-from gpiozero import OutputDevice
+import board
+import digitalio
 
 
 class VaultLock:
@@ -37,9 +38,8 @@ class VaultLock:
         gaat het relais weer uit.
 
     Ontwerpkeuzes:
-        * Relais is active-low (``active_high=False``): de relaismodule
-          schakelt aan bij een laag signaal. ``initial_value=False`` zorgt dat
-          het relais bij opstarten UIT (motor zonder stroom) is.
+        * Relais is active-low: een laag signaal schakelt het in.
+          De uitgang begint hoog zodat de motor bij opstarten stroomloos is.
         * Full-step sequentie met twee spoelen tegelijk aan: meer koppel dan
           wave drive, eenvoudig en robuust voor een 28BYJ-48-achtige motor.
         * Motor wordt na elke beweging stroomloos gezet en het relais
@@ -68,23 +68,19 @@ class VaultLock:
             Eenmalig bij opstarten; geen locks.
 
         Hardware/bibliotheken:
-            gpiozero.OutputDevice voor relais en spoelen.
+            digitalio.DigitalInOut voor relais en spoelen.
         """
 
         # Relais
-        self.relais = OutputDevice(
-            24,
-            active_high=False,
-            initial_value=False
-        )
+        self.relais = digitalio.DigitalInOut(board.D24)
+        self.relais.switch_to_output(value=True)
 
         # Stepper motor
-        self.coils = [
-            OutputDevice(17),
-            OutputDevice(27),
-            OutputDevice(22),
-            OutputDevice(23)
-        ]
+        self.coils = []
+        for pin in (board.D17, board.D27, board.D22, board.D23):
+            coil = digitalio.DigitalInOut(pin)
+            coil.switch_to_output(value=False)
+            self.coils.append(coil)
 
         self.step_sequence = [
             [1, 1, 0, 0],
@@ -119,7 +115,7 @@ class VaultLock:
             gedeelde state; de aanroeper zet ``motor_busy``.
 
         Hardware/bibliotheken:
-            Vier gpiozero.OutputDevice-spoelen.
+            Vier digitalio.DigitalInOut-spoelen.
 
         Ontwerpkeuzes:
             Full-step sequentie; reversed() voor de tegengestelde richting
@@ -142,13 +138,13 @@ class VaultLock:
                 self.coils,
                 patroon
             ):
-                coil.value = waarde
+                coil.value = bool(waarde)
 
             time.sleep(self.step_delay)
 
         # Motor stroomloos zetten
         for coil in self.coils:
-            coil.off()
+            coil.value = False
 
     def open(self):
         """
@@ -171,7 +167,7 @@ class VaultLock:
             terwijl ``VaultState.motor_busy`` True is.
 
         Hardware/bibliotheken:
-            Relais (GPIO 24) en stappenmotor via gpiozero.
+            Relais (GPIO 24) en stappenmotor via digitalio.
 
         Ontwerpkeuzes:
             Relais pas aan vlak voor het draaien, zodat de motor in rust geen
@@ -180,7 +176,7 @@ class VaultLock:
 
         print("Kluis openen...")
 
-        self.relais.on()
+        self.relais.value = False
         time.sleep(0.25)
 
         self._draai(
@@ -188,7 +184,7 @@ class VaultLock:
             vooruit=True
         )
 
-        self.relais.off()
+        self.relais.value = True
 
         print("Kluis geopend")
 
@@ -212,12 +208,12 @@ class VaultLock:
             ``motor_busy``.
 
         Hardware/bibliotheken:
-            Relais (GPIO 24) en stappenmotor via gpiozero.
+            Relais (GPIO 24) en stappenmotor via digitalio.
         """
 
         print("Kluis sluiten...")
 
-        self.relais.on()
+        self.relais.value = False
         time.sleep(0.25)
 
         self._draai(
@@ -225,7 +221,7 @@ class VaultLock:
             vooruit=False
         )
 
-        self.relais.off()
+        self.relais.value = True
 
         print("Kluis gesloten")
 
@@ -250,10 +246,10 @@ class VaultLock:
             blijft staan.
 
         Hardware/bibliotheken:
-            Relais op GPIO 24 via gpiozero.
+            Relais op GPIO 24 via digitalio.
         """
 
-        self.relais.off()
+        self.relais.value = True
 
     def close(self):
         """
@@ -261,7 +257,7 @@ class VaultLock:
 
         Werking, stap voor stap:
             1. Relais uit (motor stroomloos).
-            2. Per spoel: uit en ``close()`` om de pin vrij te geven.
+            2. Per spoel: uit en ``deinit()`` om de pin vrij te geven.
             3. Sluit het relais-object.
 
         Parameters:
@@ -274,15 +270,15 @@ class VaultLock:
             Aanroepen nadat de actuator-thread is gestopt; geen locks.
 
         Hardware/bibliotheken:
-            gpiozero: close() geeft de pinnen terug aan het systeem.
+            digitalio: deinit() geeft de pinnen terug aan het systeem.
         """
 
-        self.relais.off()
+        self.relais.value = True
 
         for coil in self.coils:
-            coil.off()
-            coil.close()
+            coil.value = False
+            coil.deinit()
 
-        self.relais.close()
+        self.relais.deinit()
 
         print("Vault lock afgesloten")
