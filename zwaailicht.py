@@ -99,8 +99,10 @@ class Zwaailicht:
         self.led.color = (rood / 100.0, groen / 100.0, blauw / 100.0)
 
     def knipper_rood(self):
-        """Wissel elke 150 ms rood en uit af zonder de thread te blokkeren."""
-        self.led.color = (1, 0, 0) if int(time.monotonic() / 0.15) % 2 == 0 else (0, 0, 0)
+        """Laat rood geleidelijk oplichten en uitdoven via PWM."""
+        fase = time.monotonic() % 2.0
+        helderheid = 1.0 - abs(fase - 1.0)
+        self.led.color = (helderheid, 0, 0)
 
     def alarm(self, aantal=5, snelheid=0.2):
         """
