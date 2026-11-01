@@ -30,9 +30,9 @@ VOICE_PASSPHRASE = "open"  # Geheime gesproken passphrase voor Factor 2
 # 20 s geeft genoeg tijd om te spreken zonder dat de kluis lang half-open blijft.
 VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis terugvalt naar PIN-invoer
 
-# Daglicht is ver onder 5000 lux binnen; test-waarde zodat sabotage niet bij
+# Daglicht is ver onder 50 lux binnen; test-waarde zodat sabotage niet bij
 # gewoon daglicht afgaat. Productiewaarde moet lager (bv. ~100-500 lux).
-LUX_SABOTAGE_THRESHOLD = 5000.0  # Voorlopig hoog gezet voor testen in daglicht
+LUX_SABOTAGE_THRESHOLD = 50.0  # Voorlopig hoog gezet voor testen in daglicht
 # Kamertemperatuur ~20-22 °C; 30 °C laat het alarm testen met een hand/föhn.
 # Productiewaarde ligt veel hoger (bv. 50-60 °C).
 TEMP_FIRE_THRESHOLD_C = 30.0     # Voorlopig laag gezet voor testen in kamerwarmte
@@ -44,14 +44,14 @@ HYSTERESIS_10BIT = 12            # Dode band (op 0..1023) tegen flikkeren tussen
 # Drie is gebruikelijk (zoals een pinautomaat): tolerant maar niet te raden.
 MAX_PIN_ATTEMPTS = 3             # Pogingen voor de wachtperiode ingaat
 # Lang genoeg om op te vallen, kort genoeg om niet te storen.
-WRONG_PIN_BLINK_S = 3.0          # Zwaailicht na een foute code
+WRONG_PIN_BLINK_S = 5.0          # Zwaailicht na een foute code
 # 300 s maakt brute force onpraktisch zonder een gebruiker permanent buiten te sluiten.
-PIN_LOCKOUT_S = 300              # Wachtperiode (5 min) na de laatste foute poging
+PIN_LOCKOUT_S = 10.0              # Wachtperiode (10 sec) na de laatste foute poging
 # 40 cm = armlengte: iemand die zo dicht staat is bezig met de kluis.
 LOITER_DISTANCE_CM = 40.0        # Dichterbij dan dit = loitering
 # Een minuut geeft eigenaren tijd om de code in te voeren, maar wie blijft
 # treuzelen zonder iets te doen valt op.
-LOITER_ALARM_S = 60.0            # Zo lang voor de kluis staan zonder iets te doen = alarm
+LOITER_ALARM_S = 15.0            # Zo lang voor de kluis staan zonder iets te doen = alarm
 # De Pico meldt elke 0,5 s; 10 s = ca. 20 gemiste metingen, dus waarschijnlijk offline.
 PERIMETER_STALE_S = 10.0         # Afstandsmeting ouder dan dit wordt genegeerd (Pico offline)
 
