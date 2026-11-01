@@ -261,6 +261,8 @@ def thread_sensors_and_display():
                 raw_10bit = sensors.lees_potmeter_raw()
                 temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
                 temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
+                # Zonder OLED-CS verschijnen ADC-transacties kort op het scherm.
+                display.refresh()
 
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
 

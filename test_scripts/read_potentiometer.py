@@ -28,9 +28,8 @@ BORDER = 5
 
 # Use for SPI
 spi = board.SPI()
-oled_cs = digitalio.DigitalInOut(board.D5)
 oled_dc = digitalio.DigitalInOut(board.D6)
-oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, oled_cs)
+oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, None)
 
 # Clear display.
 oled.fill(0)
@@ -157,6 +156,7 @@ def main():
             # Met >> 6 krijgen we weer de pure 10-bit ADC resolutie (0..1023).
             raw_10bit = pot_channel.value >> 6
             voltage = pot_channel.voltage
+            oled.show()
             huidig_cijfer = raw_to_digit(raw_10bit)
 
             # Update scherm en terminal als het getal verandert (of bij minimale variatie)
