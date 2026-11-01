@@ -33,9 +33,9 @@ VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis te
 # Daglicht is ver onder 5000 lux binnen; test-waarde zodat sabotage niet bij
 # gewoon daglicht afgaat. Productiewaarde moet lager (bv. ~100-500 lux).
 LUX_SABOTAGE_THRESHOLD = 5000.0  # Voorlopig hoog gezet voor testen in daglicht
-# Kamertemperatuur ~20-22 °C; 25 °C laat het alarm testen met een hand/föhn.
+# Kamertemperatuur ~20-22 °C; 30 °C laat het alarm testen met een hand/föhn.
 # Productiewaarde ligt veel hoger (bv. 50-60 °C).
-TEMP_FIRE_THRESHOLD_C = 25.0     # Voorlopig laag gezet voor testen in kamerwarmte
+TEMP_FIRE_THRESHOLD_C = 30.0     # Voorlopig laag gezet voor testen in kamerwarmte
 # 10 metingen bij 10 Hz = 1 s aaneengesloten: voorkomt vals alarm door ruis.
 FIRE_CONFIRM_READINGS = 10       # Opeenvolgende metingen (10 Hz) boven de drempel voor brandalarm
 # 12 van 1024 (~1,2%) is kleiner dan een cijferbreedte (~102) maar groter dan
