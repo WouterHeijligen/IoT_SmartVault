@@ -4,8 +4,9 @@ Zwaailicht (RGB-LED) van de Smart Vault.
 
 Rol van dit bestand:
     Bevat ``Zwaailicht``, dat een RGB-LED aanstuurt voor statusfeedback:
-    effen kleuren, een zacht pulserend blauw/rood zwaailicht (alarm/wachttijd)
-    en een snel afwisselend alarm. Draait ook los als testprogramma.
+    effen kleuren en een zacht pulserend blauw/rood zwaailicht voor een foute
+    code. Het alarm knippert eenvoudig rood/uit vanuit de actuator-thread.
+    Draait ook los als testprogramma.
 
 Hardware en bibliotheken:
     ``gpiozero.RGBLED`` met ``pwm=True`` op GPIO 12 (rood), 13 (groen) en
@@ -28,8 +29,8 @@ class Zwaailicht:
     RGB-zwaailicht voor statusweergave van de kluis.
 
     Doel:
-        Visuele feedback: rood/blauw voor alarm of foute code, groen/uit voor
-        normaal gedrag.
+        Visuele feedback: rood knipperend bij alarm, blauw/rood voor een foute
+        code en groen/uit voor normaal gedrag.
 
     Werking:
         Elke methode zet ``led.color`` als (rood, groen, blauw) met waarden
@@ -37,7 +38,7 @@ class Zwaailicht:
 
     Ontwerpkeuzes:
         * Fading PWM: zwaai() gebruikt een cosinus op de klok voor een zachte,
-          vloeiende overgang in plaats van hard schakelen.
+          vloeiende overgang bij een foute code.
         * Tijdgebaseerd i.p.v. stapgebaseerd: de snelheid blijft gelijk,
           ongeacht hoe vaak de aanroeper de methode oproept.
     """

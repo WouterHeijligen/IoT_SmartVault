@@ -13,9 +13,8 @@ BORDER = 5
 
 # Use for SPI
 spi = board.SPI()
-oled_cs = digitalio.DigitalInOut(board.D5)
 oled_dc = digitalio.DigitalInOut(board.D6)
-oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, oled_cs)
+oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, None)
 
 # Clear display.
 oled.fill(0)

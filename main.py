@@ -261,6 +261,8 @@ def thread_sensors_and_display():
                 raw_10bit = sensors.lees_potmeter_raw()
                 temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
                 temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
+                # Zonder OLED-CS verschijnen ADC-transacties kort op het scherm.
+                display.refresh()
 
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
 
@@ -390,6 +392,8 @@ def thread_actuators():
         langzame motorwerk gebeurt nooit onder de lock.
     """
     last_siren_time = 0.0
+    alarm_led_on = False
+    next_alarm_toggle = 0.0
 
     while state.running:
         with state.lock:
@@ -444,11 +448,21 @@ def thread_actuators():
 
         elif mode == "ALARM":
             vault.stroomloos()
-            licht.zwaai()
+            now = time.monotonic()
+            if now >= next_alarm_toggle:
+                alarm_led_on = not alarm_led_on
+                if alarm_led_on:
+                    licht.kleur_procent(100, 0, 0)
+                else:
+                    licht.uit()
+                next_alarm_toggle = now + 0.15
 
             if time.time() - last_siren_time > 4.0:
                 notificaties.sirene()
                 last_siren_time = time.time()
+        else:
+            alarm_led_on = False
+            next_alarm_toggle = 0.0
 
         if mode == "PIN_INPUT" and last_siren_time:
             notificaties.stop_sirene()

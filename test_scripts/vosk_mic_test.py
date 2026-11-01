@@ -61,13 +61,12 @@ audio_queue = queue.Queue()
 print("[STAP 3/6] Bezig met initialiseren van SPI OLED scherm...")
 try:
     oled_reset = digitalio.DigitalInOut(board.D16)
-    oled_cs = digitalio.DigitalInOut(board.D5)
     oled_dc = digitalio.DigitalInOut(board.D6)
     spi = board.SPI()
 
     WIDTH = 128
     HEIGHT = 64
-    oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, oled_cs)
+    oled = adafruit_ssd1306.SSD1306_SPI(WIDTH, HEIGHT, spi, oled_dc, oled_reset, None)
     oled.fill(0)
     oled.show()
     print(" -> OLED succesvol geïnitialiseerd!")

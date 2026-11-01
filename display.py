@@ -11,7 +11,8 @@ Rol in de architectuur:
 
 Hardware en bibliotheken:
     - adafruit_ssd1306 (SSD1306_SPI) stuurt het OLED via SPI0 aan, met
-      aparte GPIO-pinnen voor RST (GPIO 16), CS (GPIO 5) en DC (GPIO 6).
+      GPIO-pinnen voor RST (GPIO 16) en DC (GPIO 6). Het OLED heeft geen CS;
+      de module houdt de SPI-ingang permanent geselecteerd.
     - digitalio/board (Adafruit Blinka) leveren de pinabstractie op de Pi 5.
     - Pillow (PIL) tekent in een 1-bit beeld in het geheugen; pas daarna wordt
       het in één keer naar het scherm gestuurd (geen flikkering).
@@ -40,10 +41,10 @@ class Display:
 
     Aansluitingen:
         OLED RST  -> GPIO 16
-        OLED CS   -> GPIO 5
         OLED DC   -> GPIO 6
         OLED CLK  -> SPI SCLK
         OLED DATA -> SPI MOSI
+        OLED CS   -> Niet aanwezig (permanent geselecteerd)
 
     Schermresolutie:
         128 x 64 pixels
@@ -72,23 +73,20 @@ class Display:
     def __init__(
         self,
         reset_pin=board.D16,
-        cs_pin=board.D5,
         dc_pin=board.D6,
         spi=None
     ):
         """Initialiseert het OLED en wist het scherm.
 
         Werking (stap voor stap):
-            1. Maak digitale uitgangen voor RST, CS en DC (digitalio).
+            1. Maak digitale uitgangen voor RST en DC (digitalio).
             2. Kies de SPI-bus: de meegegeven gedeelde bus of anders
                ``board.SPI()`` (hardware SPI0 van de Pi).
-            3. Maak het ``SSD1306_SPI``-object (128x64) aan.
+            3. Maak het ``SSD1306_SPI``-object (128x64) aan zonder CS-pin.
             4. Laad het standaard Pillow-lettertype en wis het scherm.
 
         Parameters:
             reset_pin: pin voor OLED RST (standaard ``board.D16``).
-            cs_pin: pin voor chip select (standaard ``board.D5``; de
-                MCP3008 gebruikt een eigen CS op GPIO 25).
             dc_pin: pin voor data/command (standaard ``board.D6``).
             spi: optionele bestaande SPI-bus. main.py geeft ``sensors.spi``
                 mee zodat ADC en OLED dezelfde busobject delen; toegang
@@ -100,7 +98,6 @@ class Display:
         """
         # Besturingspinnen
         self.oled_reset = digitalio.DigitalInOut(reset_pin)
-        self.oled_cs = digitalio.DigitalInOut(cs_pin)
         self.oled_dc = digitalio.DigitalInOut(dc_pin)
 
         # Gedeelde SPI-bus (met de MCP3008) of de hardware SPI van de Pi
@@ -113,7 +110,7 @@ class Display:
             self.spi,
             self.oled_dc,
             self.oled_reset,
-            self.oled_cs
+            None
         )
 
         self.font = ImageFont.load_default()
@@ -139,6 +136,11 @@ class Display:
 
         self.oled.fill(0)
         self.oled.show()
+
+    def refresh(self):
+        """Stuur de framebuffer opnieuw om SPI-ruis van de ADC te overschrijven."""
+        if not self._closed:
+            self.oled.show()
 
     def toon_tekst(self, titel, tekst):
         """
@@ -430,7 +432,7 @@ class Display:
         Werking (stap voor stap):
             1. Doe niets als al gesloten (idempotent).
             2. Wis het scherm via ``clear()``.
-            3. ``deinit()`` van CS-, DC- en RST-pinnen zodat de GPIO's weer
+            3. ``deinit()`` van DC- en RST-pinnen zodat de GPIO's weer
                vrij zijn voor een volgende start.
             4. Zet ``_closed`` zodat latere ``toon_*``-aanroepen no-ops zijn.
 
@@ -446,7 +448,6 @@ class Display:
 
         self.clear()
 
-        self.oled_cs.deinit()
         self.oled_dc.deinit()
         self.oled_reset.deinit()
 
