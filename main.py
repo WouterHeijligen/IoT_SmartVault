@@ -70,6 +70,7 @@ from vault_state import (
     LOITER_ALARM_S,
     PERIMETER_STALE_S,
     TELEMETRY_INTERVAL_S,
+    ALARM_PUSH_INTERVAL_S,
     MODE_CODES,
 )
 
@@ -445,8 +446,9 @@ def thread_actuators():
 def thread_cloud():
     """
     Deze achtergrondtaak regelt al het internetverkeer:
-    1. Als er een alarm is (of 3x een foute pincode), stuurt hij direct één
-       pushbericht naar je smartphone via `ntfy.sh`.
+    1. Bij een alarm stuurt hij een pushbericht via `ntfy.sh`, maximaal elke
+       `ALARM_PUSH_INTERVAL_S` seconden. Een reset wist die wachttijd niet.
+       Na 3x een foute pincode stuurt hij een afzonderlijk lockoutbericht.
     2. Elke 15 seconden (`TELEMETRY_INTERVAL_S`) stuurt hij alle meetwaarden
        door naar het online ThingSpeak-dashboard via MQTT.
 
@@ -455,6 +457,7 @@ def thread_cloud():
     daar helemaal geen last van!
     """
     last_push = 0.0
+    last_alarm_push = None
 
     while state.running:
         # Haal de laatste gegevens op van het centrale notitiebord (`state`)
@@ -465,9 +468,11 @@ def thread_cloud():
             dist = state.perimeter_cm
             digit = state.current_digit
             reason = state.alarm_reason
-
-            # Zorg dat we bij een alarm maar ÉÉN keer een pushbericht sturen
-            should_alert = (mode == "ALARM" and not state.alarm_notified)
+            now = time.monotonic()
+            should_alert = mode == "ALARM" and (
+                last_alarm_push is None
+                or now - last_alarm_push >= ALARM_PUSH_INTERVAL_S
+            )
             if should_alert:
                 state.alarm_notified = True
 
@@ -483,6 +488,7 @@ def thread_cloud():
 
         # Stuur smartphone-melding bij een Alarm (Brand, Inbraak of Loitering)
         if should_alert:
+            last_alarm_push = time.monotonic()
             notificaties.stuur_push(
                 f"SMART VAULT ALARM: {reason} (Lux={lux:.1f}, Temp={temp_c:.1f}C)"
             )
