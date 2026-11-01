@@ -37,12 +37,12 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
     <table>
       <thead><tr><th>Bestand</th><th>Rol</th><th>Belangrijkste libraries</th></tr></thead>
       <tbody>
-        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>gpiozero</code></td></tr>
+        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>board</code>, <code>digitalio</code></td></tr>
         <tr><td><code>vault_state.py</code></td><td>Drempelwaarden, pincode en gedeelde status (<code>VaultState</code>)</td><td><code>threading</code></td></tr>
         <tr><td><code>sensors.py</code></td><td>Potmeter, LM35 (via MCP3008) en BH1750</td><td><code>board</code>, <code>busio</code>, <code>digitalio</code>, <code>adafruit_mcp3xxx</code></td></tr>
         <tr><td><code>display.py</code></td><td>SSD1306 OLED-schermen over SPI</td><td><code>adafruit_ssd1306</code>, <code>Pillow</code></td></tr>
-        <tr><td><code>vault_lock.py</code></td><td>Relais-interlock en 28BYJ-48 stappenmotor</td><td><code>gpiozero</code> (<code>OutputDevice</code>)</td></tr>
-        <tr><td><code>zwaailicht.py</code></td><td>RGB-led met PWM, kleuren en fade</td><td><code>gpiozero</code> (<code>RGBLED</code>)</td></tr>
+        <tr><td><code>vault_lock.py</code></td><td>Relais-interlock en 28BYJ-48 stappenmotor</td><td><code>board</code>, <code>digitalio</code></td></tr>
+        <tr><td><code>zwaailicht.py</code></td><td>RGB-led met PWM, statuskleuren en rood/uit-knipperlicht</td><td><code>gpiozero</code> (<code>RGBLED</code>)</td></tr>
         <tr><td><code>voice.py</code></td><td>Offline spraakherkenning (factor 2)</td><td><code>vosk</code>, <code>sounddevice</code></td></tr>
         <tr><td><code>mqtt_client.py</code></td><td>ThingSpeak-publicatie en lokale perimeter-subscriber</td><td><code>paho-mqtt</code>, <code>python-dotenv</code></td></tr>
         <tr><td><code>notificaties.py</code></td><td>ntfy push, sirene (<code>pw-play</code>) en Bluetooth-verbinding</td><td><code>requests</code>, <code>subprocess</code></td></tr>
@@ -52,7 +52,8 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
 
     <h2 id="libraries">Gebruikte libraries (requirements.txt)</h2>
     <ul>
-      <li><strong>gpiozero</strong>: GPIO met hoge-niveau klassen (<code>Button</code>, <code>OutputDevice</code>, <code>RGBLED</code>); werkt op de Pi 5 en doet PWM in software.</li>
+      <li><strong>digitalio</strong> via Adafruit Blinka: knop met pull-up, active-low relais en digitale motorspoelen.</li>
+      <li><strong>gpiozero</strong>: <code>RGBLED(pwm=True)</code> voor de RGB-led; PWM-uitvoering en timing hangen af van de pinbackend. Software-PWM kan jitter vertonen.</li>
       <li><strong>adafruit-blinka</strong>: levert <code>board</code>, <code>busio</code> en <code>digitalio</code> zodat CircuitPython-drivers op de Pi draaien (SPI, I2C, chip-select).</li>
       <li><strong>adafruit-circuitpython-mcp3xxx</strong>: driver voor de MCP3008 ADC (<code>AnalogIn</code> geeft 16-bit waarden).</li>
       <li><strong>adafruit-circuitpython-ssd1306</strong> en <strong>Pillow</strong>: OLED-driver en tekenen van tekst/vormen in een beeldbuffer.</li>
@@ -107,7 +108,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
       <li><strong>BH1750:</strong> I2C 0x23; één keer in continue hoge-resolutiemodus gezet (commando 0x10), daarna alleen gelezen. Lux = ruwe waarde / 1,2.</li>
       <li><strong>OLED:</strong> SSD1306 128x64 over SPI (RST 16, DC 6, zonder CS); na iedere MCP3008-lezing wordt het beeld opnieuw verstuurd om zichtbare SPI-ruis te overschrijven. Bovenaan staan <code>L:</code> lux, <code>T:</code> temperatuur en <code>A:</code> afstand.</li>
       <li><strong>Stappenmotor:</strong> 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 1024 stappen, 10 ms per stap.</li>
-      <li><strong>Zwaailicht:</strong> RGB op GPIO 12/13/26 via PWM; bij een foute code fadet <code>zwaai()</code> blauw/rood, bij alarm knippert de LED eenvoudig rood/uit.</li>
+      <li><strong>Zwaailicht:</strong> RGB op GPIO 12/13/26 via PWM; bij een foute code en bij alarm knippert de LED eenvoudig rood/uit met dezelfde functie.</li>
     </ul>
 
     <h2 id="netwerk">Netwerk en cloud</h2>

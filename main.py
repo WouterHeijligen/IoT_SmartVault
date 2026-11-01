@@ -48,7 +48,8 @@ Threading-model en locks
 import threading
 import time
 
-from gpiozero import Button
+import board
+import digitalio
 
 from zwaailicht import Zwaailicht
 from sensors import Sensors
@@ -79,7 +80,8 @@ from vault_state import (
 
 state = VaultState()
 
-button = Button(4, pull_up=True)
+button = digitalio.DigitalInOut(board.D4)
+button.switch_to_input(pull=digitalio.Pull.UP)
 
 licht = Zwaailicht()
 sensors = Sensors()
@@ -107,7 +109,7 @@ def thread_button():
         gekozen (Factor 1) of stuurt de kluis terug naar de vergrendelde modus.
 
     Werking (stap voor stap):
-        1. Lees ``button.is_pressed`` (gpiozero, pull-up: ingedrukt = actief).
+        1. Lees ``not button.value`` (digitalio, pull-up: laag = ingedrukt).
         2. Flankdetectie: alleen de overgang losgelaten -> ingedrukt telt, zodat
            vasthouden niet meerdere cijfers invoert.
         3. Onder ``state.lock`` wordt afhankelijk van ``state.mode`` gehandeld:
@@ -134,7 +136,7 @@ def thread_button():
         cloud-thread. Geen SPI-gebruik.
 
     Hardware/bibliotheek:
-        gpiozero.Button met interne pull-up (knop schakelt naar GND).
+        digitalio.DigitalInOut met interne pull-up (knop schakelt naar GND).
 
     Ontwerpkeuzes:
         De debounce-sleep gebeurt buiten de lock zodat andere threads niet
@@ -145,7 +147,7 @@ def thread_button():
 
     while state.running:
         try:
-            pressed = button.is_pressed
+            pressed = not button.value
 
             if pressed and not last_pressed:
                 with state.lock:
@@ -371,7 +373,7 @@ def thread_actuators():
            VOICE_2FA -> oranje. UNLOCKED -> groen. ALARM -> stroomloos,
            zwaailicht en elke 4 s de sirene.
         4. Terug in PIN_INPUT na een alarm: sirene stoppen.
-        5. Slaap 30 ms voor een vloeiend zwaailicht.
+        5. Slaap 30 ms tussen updates.
 
     Parameters: geen.
     Retourwaarde: geen (loopt tot ``state.running`` False wordt).
@@ -392,8 +394,6 @@ def thread_actuators():
         langzame motorwerk gebeurt nooit onder de lock.
     """
     last_siren_time = 0.0
-    alarm_led_on = False
-    next_alarm_toggle = 0.0
 
     while state.running:
         with state.lock:
@@ -434,7 +434,7 @@ def thread_actuators():
             with state.lock:
                 foute_code = time.monotonic() < state.wrong_pin_until
             if foute_code:
-                licht.zwaai()
+                licht.knipper_rood()
             elif mode == "LOCKOUT":
                 licht.kleur_procent(30, 0, 0)  # Zacht rood tijdens wachtperiode
             else:
@@ -448,27 +448,17 @@ def thread_actuators():
 
         elif mode == "ALARM":
             vault.stroomloos()
-            now = time.monotonic()
-            if now >= next_alarm_toggle:
-                alarm_led_on = not alarm_led_on
-                if alarm_led_on:
-                    licht.kleur_procent(100, 0, 0)
-                else:
-                    licht.uit()
-                next_alarm_toggle = now + 0.15
+            licht.knipper_rood()
 
             if time.time() - last_siren_time > 4.0:
                 notificaties.sirene()
                 last_siren_time = time.time()
-        else:
-            alarm_led_on = False
-            next_alarm_toggle = 0.0
 
         if mode == "PIN_INPUT" and last_siren_time:
             notificaties.stop_sirene()
             last_siren_time = 0.0
 
-        time.sleep(0.03)  # Snel genoeg voor een vloeiend zwaailicht
+        time.sleep(0.03)
 
 
 # ==============================================================================
@@ -727,7 +717,7 @@ def main():
         display.close()
         sensors.close()
         voice.close()
-        button.close()
+        button.deinit()
 
         print("[SHUTDOWN] Voltooid.")
 
