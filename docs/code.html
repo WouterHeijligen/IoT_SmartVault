@@ -85,7 +85,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
         <tr><td>PIN_INPUT</td><td>Start, na reset of na lockout</td><td>Blauw licht, motor stroomloos; draaiknop kiest cijfer 0-9, knop bevestigt</td></tr>
         <tr><td>VOICE_2FA</td><td>Juiste code (bypass uit)</td><td>Oranje licht; Vosk luistert 20 s naar de passphrase, daarna terug naar PIN_INPUT</td></tr>
         <tr><td>UNLOCKED</td><td>Beide factoren juist</td><td>Groen licht; relais aan, stappenmotor opent</td></tr>
-        <tr><td>ALARM</td><td>Brand, sabotage of loitering</td><td>Zwaailicht blauw/rood, sirene, ntfy-push; knop reset</td></tr>
+        <tr><td>ALARM</td><td>Brand, sabotage of loitering</td><td>Rood/uit-knipperlicht, sirene, ntfy-push; knop reset</td></tr>
         <tr><td>LOCKOUT</td><td>3 foute codes</td><td>Zacht rood, 5 minuten wachttijd, push en sirene</td></tr>
       </tbody>
     </table>
@@ -107,7 +107,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
       <li><strong>BH1750:</strong> I2C 0x23; één keer in continue hoge-resolutiemodus gezet (commando 0x10), daarna alleen gelezen. Lux = ruwe waarde / 1,2.</li>
       <li><strong>OLED:</strong> SSD1306 128x64 over SPI (RST 16, DC 6, zonder CS); na iedere MCP3008-lezing wordt het beeld opnieuw verstuurd om zichtbare SPI-ruis te overschrijven. Bovenaan staan <code>L:</code> lux, <code>T:</code> temperatuur en <code>A:</code> afstand.</li>
       <li><strong>Stappenmotor:</strong> 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 1024 stappen, 10 ms per stap.</li>
-      <li><strong>Zwaailicht:</strong> RGB op GPIO 12/13/26; <code>zwaai()</code> fadet met een sinus tussen blauw en rood.</li>
+      <li><strong>Zwaailicht:</strong> RGB op GPIO 12/13/26 via PWM; bij een foute code fadet <code>zwaai()</code> blauw/rood, bij alarm knippert de LED eenvoudig rood/uit.</li>
     </ul>
 
     <h2 id="netwerk">Netwerk en cloud</h2>
