@@ -51,7 +51,8 @@ class Sensors:
         # --- 1. I2C-bus klaarmaken voor de BH1750 Lichtsensor ---
         # I2C gebruikt maar 2 draadjes: een kloklijn (SCL op GPIO 3) en een datalijn (SDA op GPIO 2).
         self.i2c = busio.I2C(board.D3, board.D2)
-        self.laatste_lux = 0.0  # Bewaart de laatst gemeten lichtwaarde
+        # Bewaart de laatst gemeten lichtwaarde
+        self.laatste_lux = 0.0
 
         # We reserveren heel even de I2C-lijn (`try_lock`), sturen het startcommando
         # naar de BH1750, en geven de lijn in `finally` altijd weer netjes vrij (`unlock`).

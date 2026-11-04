@@ -159,7 +159,8 @@ def thread_button():
                             else:
                                 # Pincode is FOUT!
                                 state.failed_attempts += 1
-                                state.entered_pin = []  # Maak de ingevoerde cijfers weer leeg
+                                # Maak de ingevoerde cijfers weer leeg
+                                state.entered_pin = []
                                 state.wrong_pin_until = time.monotonic() + WRONG_PIN_BLINK_S
                                 retries_left = MAX_PIN_ATTEMPTS - state.failed_attempts
                                 if retries_left > 0:
@@ -379,7 +380,8 @@ def thread_actuators():
         # Let op: we draaien de motor BUITEN `with state.lock:`, zodat het scherm en
         # de sensoren niet 30 seconden op ons hoeven te wachten terwijl de motor draait!
         if need_unlock_motion:
-            licht.kleur_procent(0, 100, 0)  # Groen licht
+            # Groen licht
+            licht.kleur_procent(0, 100, 0)
             with state.lock:
                 state.motor_busy = True
             vault.open()
@@ -389,7 +391,8 @@ def thread_actuators():
 
         # --- Motor-actie 2: Kluis SLUITEN ---
         if need_lock_motion:
-            licht.kleur_procent(0, 0, 80)   # Blauw licht
+            # Blauw licht
+            licht.kleur_procent(0, 0, 80)
             with state.lock:
                 state.motor_busy = True
             vault.sluit()
@@ -398,25 +401,30 @@ def thread_actuators():
 
         # --- RGB-LED en Sirene aansturen op basis van de huidige modus ---
         if mode in ("PIN_INPUT", "LOCKOUT"):
-            vault.stroomloos()  # Zorg dat het motor-relais veilig uit staat
+            # Zorg dat het motor-relais veilig uit staat
+            vault.stroomloos()
             with state.lock:
                 foute_code = time.monotonic() < state.wrong_pin_until
             if foute_code:
                 licht.knipper_rood()
             elif mode == "LOCKOUT":
-                licht.kleur_procent(30, 0, 0)  # Gedimd rood tijdens de blokkeertijd
+                licht.kleur_procent(30, 0, 0)  # Zacht rood tijdens wachtperiode
             else:
-                licht.kleur_procent(0, 0, 80)  # Rustig blauw in normale wachtstand
+                # Rustig blauw in normale wachtstand
+                licht.kleur_procent(0, 0, 80)
 
         elif mode == "VOICE_2FA":
-            licht.kleur_procent(80, 30, 0)     # Oranje tijdens wachten op spraak
+            # Oranje tijdens wachten op spraak
+            licht.kleur_procent(80, 30, 0)
 
         elif mode == "UNLOCKED":
-            licht.kleur_procent(0, 100, 0)     # Fel groen als de kluis open is
+            # Fel groen als de kluis open is
+            licht.kleur_procent(0, 100, 0)
 
         elif mode == "ALARM":
             vault.stroomloos()
-            licht.knipper_rood()               # Rood zwaailicht!
+            # Rood zwaailicht!
+            licht.knipper_rood()
 
             # Start elke 4 seconden de sirene opnieuw zolang het alarm actief is
             if time.time() - last_siren_time > 4.0:

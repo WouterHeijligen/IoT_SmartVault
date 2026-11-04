@@ -133,10 +133,11 @@ class VoiceRecognition:
         # wordt de microfoon ook automatisch weer netjes uitgeschakeld.
         with self._sd.RawInputStream(
             samplerate=self.sample_rate,
-            blocksize=int(self.sample_rate * 0.5),  # Blokjes van een halve seconde
+            # Neem op in blokjes van 0,5 seconde in mono (channels=1)
+            blocksize=int(self.sample_rate * 0.5),
             device=self.device,
             dtype="int16",
-            channels=1,  # Mono geluid (1 kanaal is genoeg voor spraak)
+            channels=1,
             latency="high",
             callback=callback,
         ):

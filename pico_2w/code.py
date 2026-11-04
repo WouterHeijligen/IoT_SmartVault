@@ -43,7 +43,8 @@ sonar = adafruit_hcsr04.HCSR04(trigger_pin=board.GP27, echo_pin=board.GP28)
 # Zo staan er geen wifi-wachtwoorden of IP-adressen vast in de broncode!
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "vault/perimeter/distance")
-PUBLISH_INTERVAL_S = 0.5  # Elke halve seconde een meting versturen
+# Elke halve seconde een meting versturen
+PUBLISH_INTERVAL_S = 0.5
 
 
 def connect_wifi():

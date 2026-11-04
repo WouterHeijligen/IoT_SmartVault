@@ -171,7 +171,8 @@ class Notificaties:
                     "Priority": "high",
                     "Tags": "rotating_light,lock"
                 },
-                timeout=5,  # Wacht maximaal 5 seconden op internet
+                # Wacht maximaal 5 seconden op internet
+                timeout=5,
             )
 
             # HTTP-code 200 betekent: "OK, goed ontvangen door de server!"

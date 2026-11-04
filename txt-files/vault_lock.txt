@@ -57,10 +57,11 @@ class VaultLock:
         # en dat rondje steeds door te schuiven, wordt het magneetveld rondgetrokken
         # en draait het motortje met maximale kracht (koppel) stap voor stap rond.
         self.step_sequence = [
-            [1, 1, 0, 0],  # Stap 1: spoel 1 en 2 aan
-            [0, 1, 1, 0],  # Stap 2: spoel 2 en 3 aan
-            [0, 0, 1, 1],  # Stap 3: spoel 3 en 4 aan
-            [1, 0, 0, 1]   # Stap 4: spoel 4 en 1 aan
+            # Stap 1: spoel 1 en 2 aan, Stap 2: 2 en 3, Stap 3: 3 en 4, Stap 4: 4 en 1
+            [1, 1, 0, 0],
+            [0, 1, 1, 0],
+            [0, 0, 1, 1],
+            [1, 0, 0, 1]
         ]
 
         # Wachttijd tussen twee stapjes (10 milliseconden = 100 stapjes per seconde).
@@ -111,7 +112,8 @@ class VaultLock:
         """
         print("Kluis openen...")
 
-        self.relais.value = False  # Stroom AAN
+        # Zet het relais AAN (False = stroom AAN)
+        self.relais.value = False
         time.sleep(0.25)
 
         self._draai(
@@ -119,7 +121,8 @@ class VaultLock:
             vooruit=False
         )
 
-        self.relais.value = True   # Stroom UIT
+        # Zet het relais UIT (True = stroom UIT)
+        self.relais.value = True
 
         print("Kluis geopend")
 
@@ -131,7 +134,8 @@ class VaultLock:
         """
         print("Kluis sluiten...")
 
-        self.relais.value = False  # Stroom AAN
+        # Zet het relais AAN (False = stroom AAN)
+        self.relais.value = False
         time.sleep(0.25)
 
         self._draai(
@@ -139,7 +143,8 @@ class VaultLock:
             vooruit=True
         )
 
-        self.relais.value = True   # Stroom UIT
+        # Zet het relais UIT (True = stroom UIT)
+        self.relais.value = True
 
         print("Kluis gesloten")
 
