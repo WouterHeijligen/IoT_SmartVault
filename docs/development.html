@@ -53,6 +53,11 @@ python -m http.server 8000 --bind 127.0.0.1 --directory docs</code></pre>
       <li>Merging into or pushing to <code>master</code> runs the same checks and
         deploys the artifact to the <code>github-pages</code> environment.</li>
     </ol>
+    <p>Do not select <strong>Deploy from a branch</strong>: that also runs GitHub's
+      generated <strong>pages build and deployment</strong> workflow, whose action
+      versions are not controlled by this repository. Keep <strong>GitHub Actions</strong>
+      selected so the maintained <code>.github/workflows/pages.yml</code> is the
+      only publisher and its Node.js runtimes can be updated here.</p>
     <p>After the first successful deployment, the site should be available at
       <a href="https://wouterheijligen.github.io/IoT_SmartVault/">wouterheijligen.github.io/IoT_SmartVault/</a>.
       The deployment job reports the actual URL. A manual run is also available
