@@ -1,30 +1,29 @@
 """
-Perimeter-sensor van de Smart Vault (Raspberry Pi Pico 2 W, CircuitPython).
+================================================================================
+BESTAND: pico_2w/code.py
+DOEL:    Draadloze afstandssensor op de Raspberry Pi Pico 2 W (CircuitPython).
+================================================================================
 
-Rol van dit bestand:
-    Draait als ``code.py`` op de Pico 2 W en meet continu de afstand tot
-    personen voor de kluis. Elke 0,5 s wordt de afstand in cm via MQTT naar de
-    Raspberry Pi gestuurd, waar main.py loitering (te lang dichtbij staan)
-    mee detecteert.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Waarom gebruiken we naast onze Raspberry Pi 5 óók nog een Raspberry Pi Pico 2 W?
+In een echt IoT-systeem hangt een bewegingssensor of afstandssensor vaak op een
+andere plek (bijvoorbeeld boven de deur of aan de muur voor de kluis).
+De Pico 2 W is een kleine, zuinige microcontroller met ingebouwde Wi-Fi:
+1. Hij meet elke halve seconde (0,5 s) met een ultrasone sensor (type RCWL-9610A / HC-SR04)
+   hoe ver iemand van de kluis vandaan staat (in centimeters).
+2. Hij stuurt dat getal draadloos via **MQTT** over Wi-Fi naar de Raspberry Pi 5
+   op het topic `vault/perimeter/distance`.
+3. De Raspberry Pi 5 ontvangt dit getal. Blijft iemand langer dan 15 seconden
+   dichterbij dan 40 cm staan zonder de kluis te bedienen ("loitering")?
+   Dan gaat op de Pi 5 het alarm af!
 
-Werking, stap voor stap:
-    1. Initialiseer de ultrasone sensor.
-    2. Verbind met Wi-Fi en daarna met de MQTT-broker.
-    3. Eindeloze lus: controleer Wi-Fi, meet afstand, publiceer, wacht.
-    4. Bij fouten wordt opnieuw verbonden in plaats van te crashen.
-
-Hardware en bibliotheken:
-    * RCWL-9610A in trigger/echo-modus via ``adafruit_hcsr04`` (HC-SR04
-      compatibel): TRIG op GP27, ECHO op GP28.
-    * ``wifi``/``socketpool`` (CircuitPython) en ``adafruit_minimqtt`` voor
-      MQTT; MQTT is licht en geschikt voor een microcontroller.
-    * Instellingen (MQTT_BROKER, MQTT_TOPIC, Wi-Fi) uit settings.toml via
-      ``os.getenv``, zodat geen geheimen in de code staan.
-
-Threads en gedeelde toestand:
-    Eén enkele lus zonder threads of locks; geen gedeelde state. De Pi leest
-    de waarde en gebruikt ``PERIMETER_STALE_S`` om te detecteren dat de Pico
-    offline is. Het bericht is bewust alleen een getal in tekst (bv. "123.4").
+💡 HOE WERKT EEN ULTRASONE SENSOR? (Makkelijke uitleg voor je presentatie)
+Net als een vleermuis! De sensor stuurt via de `TRIG`-pin (GP27) een kort,
+onhoorbaar hoog geluidspulsje uit. Dat geluid kaatst terug tegen een persoon
+en wordt opgevangen door de `ECHO`-pin (GP28). Uit de tijd die het geluid
+onderweg was, berekent de bibliotheek `adafruit_hcsr04` automatisch de afstand
+in centimeters!
 """
 
 import os
@@ -36,36 +35,22 @@ import wifi
 import adafruit_hcsr04
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 
-# RCWL-9610A in trigger/echo-modus: TRIG op GP27 (pin 32), ECHO op GP28 (pin 34)
+# 1. Ultrasone afstandssensor klaarmaken:
+# TRIG (geluid zenden) zit op pin GP27, ECHO (geluid terug ontvangen) zit op pin GP28.
 sonar = adafruit_hcsr04.HCSR04(trigger_pin=board.GP27, echo_pin=board.GP28)
 
+# 2. Haal de netwerkinstellingen uit het bestand `settings.toml` op de Pico 2 W.
+# Zo staan er geen wifi-wachtwoorden of IP-adressen vast in de broncode!
 MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "vault/perimeter/distance")
+# Elke halve seconde een meting versturen
 PUBLISH_INTERVAL_S = 0.5
 
 
 def connect_wifi():
     """
-    Verbind met Wi-Fi en blokkeer tot dat gelukt is.
-
-    Werking:
-        Zolang ``wifi.radio.connected`` False is: probeer te verbinden met
-        SSID/wachtwoord uit settings.toml; bij een fout wordt de melding
-        getoond en wacht de functie 2 s voor een nieuwe poging. Print daarna
-        het IP-adres.
-
-    Parameters:
-        Geen.
-
-    Returns:
-        None
-
-    Threads/locks:
-        Geen threads; blokkeert de hoofdlus tot er verbinding is, wat hier
-        bewust is: zonder netwerk valt niets te publiceren.
-
-    Hardware/bibliotheken:
-        Ingebouwde Wi-Fi van de Pico 2 W via CircuitPython ``wifi``.
+    Maakt verbinding met het Wi-Fi netwerk (gegevens komen uit `settings.toml`).
+    Blijft het elke 2 seconden opnieuw proberen tot er verbinding is.
     """
     while not wifi.radio.connected:
         try:
@@ -82,27 +67,8 @@ def connect_wifi():
 
 def connect_mqtt():
     """
-    Maak een MQTT-client en verbind met de broker.
-
-    Werking:
-        Maakt een ``MQTT.MQTT``-client met broker uit ``MQTT_BROKER``, poort
-        1883 (onversleuteld, lokaal netwerk), een socketpool op de Wi-Fi-radio
-        en vaste client_id "pico_perimeter" (zodat een herverbinding de oude
-        sessie vervangt in plaats van dubbele clients te maken). Verbindt en
-        print de broker.
-
-    Parameters:
-        Geen.
-
-    Returns:
-        MQTT.MQTT: de verbonden client; de aanroeper bewaart deze in ``mqtt``.
-
-    Threads/locks:
-        Geen; kan een uitzondering gooien als de broker onbereikbaar is, die
-        de hoofdlus afvangt.
-
-    Hardware/bibliotheken:
-        adafruit_minimqtt en socketpool over de Wi-Fi-radio.
+    Maakt verbinding met de lokale MQTT-broker (Mosquitto) die op de Raspberry Pi 5 draait.
+    Geeft het verbonden MQTT-object terug zodat we daarmee berichten kunnen sturen (`publish`).
     """
     client = MQTT.MQTT(
         broker=MQTT_BROKER,
@@ -115,26 +81,35 @@ def connect_mqtt():
     return client
 
 
+# Verbind bij het opstarten eerst met Wi-Fi en daarna met de MQTT-broker
 connect_wifi()
 mqtt = connect_mqtt()
-
-# Hoofdlus: meet en publiceer elke PUBLISH_INTERVAL_S. RuntimeError van de
-# sensor (geen echo) is normaal en wordt overgeslagen; elke andere fout
-# betekent verbindingsverlies en triggert herverbinden.
+
+# ==============================================================================
+# HOOFDLUS: Meet elke 0,5 seconde de afstand en stuur die via MQTT naar de Pi 5
+# ==============================================================================
 while True:
     try:
+        # Als de Wi-Fi tussendoor is weggevallen, verbind dan eerst opnieuw
         if not wifi.radio.connected:
             connect_wifi()
             mqtt = connect_mqtt()
 
+        # Meet de afstand in centimeters met de ultrasone sensor
         afstand = sonar.distance
+
+        # Stuur de afstand met 1 cijfer achter de komma (bijv. "38.4") naar de Raspberry Pi 5
         mqtt.publish(MQTT_TOPIC, f"{afstand:.1f}")
         print(f"Afstand: {afstand:.1f} cm")
 
     except RuntimeError:
+        # Als niemand voor de sensor staat (of te ver weg), komt er geen echo terug.
+        # De sensor geeft dan een `RuntimeError`. Dat is heel normaal, dus we vangen
+        # die netjes op en meten een halve seconde later gewoon opnieuw!
         print("Geen echo ontvangen (te dichtbij, te ver of bedrading controleren)")
 
     except Exception as e:
+        # Ging er iets mis met de netwerkverbinding? Wacht 2 seconden en verbind opnieuw.
         print(f"Verbinding verbroken ({e}), opnieuw verbinden...")
         time.sleep(2)
         try:
@@ -143,4 +118,5 @@ while True:
         except Exception as e2:
             print(f"Opnieuw verbinden mislukt: {e2}")
 
+    # Wacht een halve seconde tot de volgende meting
     time.sleep(PUBLISH_INTERVAL_S)

@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """
-Mechanisch slot van de Smart Vault: relais + stappenmotor.
+================================================================================
+BESTAND: vault_lock.py
+DOEL:    Het fysieke slot van de kluis (Relais + 28BYJ-48 Stappenmotor).
+================================================================================
 
-Rol van dit bestand:
-    Bevat ``VaultLock``, dat de kluisdeur fysiek opent en sluit. Een relais
-    schakelt de voeding van de stappenmotor, de motor zelf wordt via vier
-    GPIO-pinnen (spoelen) aangestuurd.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Om het slot van de kluis fysiek open en dicht te schuiven, gebruiken we een
+stappenmotor (type 28BYJ-48 met driverboard). Een stappenmotor draait niet
+zomaar rond zoals een ventilator, maar zet hele kleine, precieze stapjes.
+Zo weten we exact hoe ver het slot open of dicht schuift!
 
-Hardware en bibliotheken:
-    * ``digitalio.DigitalInOut`` voor relais op GPIO 24 en
-      spoelen op GPIO 17, 27, 22 en 23.
-    * Relais is active-low: GPIO laag = relais aan.
-
-Threads en gedeelde toestand:
-    Geen eigen threads of locks. open()/sluit() blokkeren ~31 s; ze worden
-    aangeroepen vanuit de actuator-thread van main.py, die ``motor_busy`` in
-    ``VaultState`` bijhoudt. stroomloos() mag ook uit andere threads (bv. bij
-    alarm of afsluiten) worden aangeroepen.
+💡 TWEE GOUDEN VRAGEN OP JE VERDEDIGING:
+1. "Waarom zit er een relais tussen?"
+   Een stappenmotor trekt redelijk wat stroom en kan warm worden als er spanning
+   op het driverboard blijft staan. Het relais (op GPIO 24) werkt als een
+   veiligheidsschakelaar (interlock): we zetten de stroom naar de motor ALLEEN aan
+   op het moment dat de kluis open of dicht moet. Daarna schakelt het relais de
+   stroom meteen weer helemaal uit!
+2. "Waarom zetten jullie het relais op False om hem AAN te zetten?"
+   Ons relais-bordje is 'Active-Low'. Dat betekent dat de schakelaar dichtklapt
+   zodra de GPIO-pin naar 0 Volt (LOW / `False`) wordt getrokken, en uitgaat
+   bij 3.3 Volt (HIGH / `True`).
 """
 
 import time
@@ -26,157 +32,87 @@ import digitalio
 
 class VaultLock:
     """
-    Bestuurt de deurvergrendeling van de kluis (relais + stappenmotor).
-
-    Doel:
-        De deur 1x openen of sluiten per statuswisseling, en de motor daarna
-        weer volledig stroomloos maken zodat hij niet warm wordt.
-
-    Werking:
-        Eerst wordt het relais ingeschakeld (voeding motor aan), dan draait de
-        motor een vast aantal stappen via een vierfasen-sequentie, en daarna
-        gaat het relais weer uit.
-
-    Ontwerpkeuzes:
-        * Relais is active-low: een laag signaal schakelt het in.
-          De uitgang begint hoog zodat de motor bij opstarten stroomloos is.
-        * Full-step sequentie met twee spoelen tegelijk aan: meer koppel dan
-          wave drive, eenvoudig en robuust voor een 28BYJ-48-achtige motor.
-        * Motor wordt na elke beweging stroomloos gezet en het relais
-          schakelt de voeding af: geen houdkoppel, geen opwarming, veiliger.
+    Stuurt het relais en de stappenmotor aan om de kluisdeur te openen en te sluiten.
     """
 
     def __init__(self):
         """
-        Initialiseert het relais, de vier motorspoelen en de stapsequentie.
-
-        Werking:
-            1. Maak het relais (GPIO 24, active-low, uit).
-            2. Maak vier spoelen (GPIO 17, 27, 22, 23).
-            3. Definieer de full-step sequentie (4 patronen, steeds twee
-               aangrenzende spoelen aan).
-            4. Stel ``step_delay`` in op 10 ms per stap (snel genoeg, maar
-               de motor kan het nog volgen zonder stappen te missen).
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None. Zet relais, coils, step_sequence en step_delay.
-
-        Threads/locks:
-            Eenmalig bij opstarten; geen locks.
-
-        Hardware/bibliotheken:
-            digitalio.DigitalInOut voor relais en spoelen.
+        Zet de GPIO-pinnen voor het relais en de vier spoelen van de stappenmotor klaar.
         """
-
-        # Relais
+        # 1. Relais klaarmaken op GPIO 24.
+        # Let op: Active-Low! `value=True` betekent dus dat het relais veilig UIT start.
         self.relais = digitalio.DigitalInOut(board.D24)
         self.relais.switch_to_output(value=True)
 
-        # Stepper motor
+        # 2. De stappenmotor heeft 4 elektromagnetische spoelen (coils) op GPIO 17, 27, 22 en 23.
+        # We zetten ze allemaal klaar als uitgang (output) en zetten ze standaard UIT (`False`).
         self.coils = []
         for pin in (board.D17, board.D27, board.D22, board.D23):
             coil = digitalio.DigitalInOut(pin)
             coil.switch_to_output(value=False)
             self.coils.append(coil)
 
+        # 3. Het stappatroon (Full-Step mode):
+        # Door steeds 2 aangrenzende spoelen tegelijk aan te zetten (1 = aan, 0 = uit)
+        # en dat rondje steeds door te schuiven, wordt het magneetveld rondgetrokken
+        # en draait het motortje met maximale kracht (koppel) stap voor stap rond.
         self.step_sequence = [
+            # Stap 1: spoel 1 en 2 aan, Stap 2: 2 en 3, Stap 3: 3 en 4, Stap 4: 4 en 1
             [1, 1, 0, 0],
             [0, 1, 1, 0],
             [0, 0, 1, 1],
             [1, 0, 0, 1]
         ]
 
+        # Wachttijd tussen twee stapjes (10 milliseconden = 100 stapjes per seconde).
+        # Als je dit te kort maakt, kan de motor het mechanisch niet bijhouden.
         self.step_delay = 0.010
 
     def _draai(self, stappen, vooruit=True):
         """
-        Draai de stappenmotor een aantal stappen en zet hem daarna stroomloos.
-
-        Werking, stap voor stap:
-            1. Kies de sequentie: normaal voor vooruit, omgekeerde volgorde
-               voor achteruit.
-            2. Per stap: kies patroon ``stap % 4`` en zet elke spoel op de
-               bijbehorende waarde (1 = aan, 0 = uit).
-            3. Wacht ``step_delay`` (10 ms) zodat de motor de stap kan maken.
-            4. Zet na afloop alle spoelen uit zodat er geen stroom meer loopt.
-
-        Parameters:
-            stappen (int): aantal te zetten stappen.
-            vooruit (bool): True = normale sequentie (sluiten),
-                False = omgekeerde sequentie (openen).
-
-        Returns:
-            None
-
-        Threads/locks:
-            Blokkeert de aanroepende thread (stappen x 10 ms). Raakt geen
-            gedeelde state; de aanroeper zet ``motor_busy``.
-
-        Hardware/bibliotheken:
-            Vier digitalio.DigitalInOut-spoelen.
-
-        Ontwerpkeuzes:
-            Full-step sequentie; reversed() voor de tegengestelde richting
-            vermijdt een tweede tabel.
+        Hulpfunctie die de motor een exact aantal stappen laat draaien.
+        - `vooruit=True`:  draait de lijst in normale volgorde af (sluiten).
+        - `vooruit=False`: draait de lijst achterstevoren af met `reversed()` (openen).
         """
-
+        # Kies de juiste volgorde van het stappatroon (vooruit of achteruit)
         sequence = (
             self.step_sequence
             if vooruit
             else list(reversed(self.step_sequence))
         )
 
+        # Loop het gevraagde aantal stappen af
         for stap in range(stappen):
-
+            # Met `% 4` (modulo) herhalen we steeds patroon 0, 1, 2, 3, 0, 1, 2, 3...
             patroon = sequence[
                 stap % len(sequence)
             ]
 
+            # Zet elk van de 4 spoelen aan (True) of uit (False) volgens het gekozen patroon
             for coil, waarde in zip(
                 self.coils,
                 patroon
             ):
                 coil.value = bool(waarde)
 
+            # Geef het motortje 10 ms de tijd om fysiek naar dit magneetveld toe te draaien
             time.sleep(self.step_delay)
 
-        # Motor stroomloos zetten
+        # Klaar met draaien! Zet alle 4 de spoelen weer uit zodat de motor niet heet wordt.
         for coil in self.coils:
             coil.value = False
 
     def open(self):
         """
-        Open de kluis: relais aan, motor 3072 stappen omgekeerd, relais uit.
-
-        Werking, stap voor stap:
-            1. Schakel het relais in (voeding motor).
-            2. Wacht 0.25 s zodat de voeding stabiel is.
-            3. Draai 3072 stappen met vooruit=False via _draai().
-            4. Schakel het relais uit (motor weer stroomloos).
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Blokkeert ~31 s. Wordt vanuit de actuator-thread aangeroepen
-            terwijl ``VaultState.motor_busy`` True is.
-
-        Hardware/bibliotheken:
-            Relais (GPIO 24) en stappenmotor via digitalio.
-
-        Ontwerpkeuzes:
-            Relais pas aan vlak voor het draaien, zodat de motor in rust geen
-            stroom of warmte verbruikt.
+        Open het kluisslot:
+        1. Zet het relais AAN (`False`, want active-low) zodat de motor stroom krijgt.
+        2. Wacht 0,25 seconde zodat het relais fysiek is omgeklikt en de spanning stabiel is.
+        3. Draai 3072 stappen achteruit (dit is precies anderhalve omwenteling van de as).
+        4. Zet het relais weer UIT (`True`).
         """
-
         print("Kluis openen...")
 
+        # Zet het relais AAN (False = stroom AAN)
         self.relais.value = False
         time.sleep(0.25)
 
@@ -185,35 +121,20 @@ class VaultLock:
             vooruit=False
         )
 
+        # Zet het relais UIT (True = stroom UIT)
         self.relais.value = True
-    
+
         print("Kluis geopend")
 
     def sluit(self):
         """
-        Sluit de kluis: relais aan, motor 3072 stappen normaal, relais uit.
-
-        Werking:
-            Spiegelbeeld van open(): relais aan, 0.25 s wachten, 3072 stappen
-            met vooruit=True, relais uit. Hetzelfde aantal stappen
-            brengt de deur precies terug in de uitgangspositie.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Blokkeert ~31 s; aanroeper (actuator-thread) beheert
-            ``motor_busy``.
-
-        Hardware/bibliotheken:
-            Relais (GPIO 24) en stappenmotor via digitalio.
+        Sluit het kluisslot:
+        Precies het omgekeerde van `open()`: relais AAN, 3072 stappen vooruit draaien
+        zodat de schuif weer op zijn exacte beginplek zit, en relais weer UIT.
         """
-
         print("Kluis sluiten...")
 
+        # Zet het relais AAN (False = stroom AAN)
         self.relais.value = False
         time.sleep(0.25)
 
@@ -222,58 +143,23 @@ class VaultLock:
             vooruit=True
         )
 
+        # Zet het relais UIT (True = stroom UIT)
         self.relais.value = True
 
         print("Kluis gesloten")
 
     def stroomloos(self):
         """
-        Zorg dat de motor geen stroom heeft (relais UIT).
-
-        Werking:
-            Zet alleen het relais uit; omdat het relais active-low is, betekent
-            dat dat de motorvoeding wordt onderbroken. Veilig om vaak aan te
-            roepen (idempotent).
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Neemt geen locks; mag uit elke thread, bv. in de alarm- of
-            afsluitpad, om zeker te zijn dat de motor niet onder spanning
-            blijft staan.
-
-        Hardware/bibliotheken:
-            Relais op GPIO 24 via digitalio.
+        Veiligheidsfunctie: zorgt dat het relais gegarandeerd UIT staat (`True`).
+        Wordt o.a. aangeroepen bij een alarm of bij het afsluiten van het programma.
         """
-
         self.relais.value = True
 
     def close(self):
         """
-        Geef alle GPIO-resources vrij bij afsluiten.
-
-        Werking, stap voor stap:
-            1. Relais uit (motor stroomloos).
-            2. Per spoel: uit en ``deinit()`` om de pin vrij te geven.
-            3. Sluit het relais-object.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Aanroepen nadat de actuator-thread is gestopt; geen locks.
-
-        Hardware/bibliotheken:
-            digitalio: deinit() geeft de pinnen terug aan het systeem.
+        Ruimt alles netjes op bij het afsluiten van het programma:
+        zet het relais en alle spoelen uit en geeft de GPIO-pinnen vrij (`deinit`).
         """
-
         self.relais.value = True
 
         for coil in self.coils:

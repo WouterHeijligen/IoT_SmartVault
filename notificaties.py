@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """
-Meldingen van de Smart Vault: ntfy-pushberichten en sirene via Bluetooth.
+================================================================================
+BESTAND: notificaties.py
+DOEL:    Alarmering op afstand (Pushbericht naar smartphone) & Sirene (Bluetooth).
+================================================================================
 
-Rol van dit bestand:
-    Bevat ``Notificaties``, dat (1) push-meldingen naar de smartphone stuurt
-    via ntfy.sh, (2) een sirene (sirene.wav) afspeelt en (3) de Bluetooth
-    speaker verbonden houdt.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Als er wordt ingebroken, er brand uitbreekt, of iemand 3x een foute pincode
+intoetst, doet deze klasse twee dingen:
+1. LOKAAL AFSCHRIKKEN (`sirene`):
+   Speelt het geluidsbestand `sirene.wav` af via de gekoppelde Bluetooth-speaker.
+2. OP AFSTAND WAARSCHUWEN (`stuur_push`):
+   Stuurt via internet (HTTPS POST met de `requests` bibliotheek) een melding
+   naar de gratis app `ntfy.sh` op je smartphone!
 
-Bibliotheken en hardware:
-    * ``requests`` voor de HTTP-POST naar ntfy.sh.
-    * ``subprocess`` voor ``bluetoothctl`` (speaker verbinden) en ``pw-play``
-      (PipeWire-afspeler voor het .wav-bestand).
-    * ``python-dotenv`` voor NTFY_TOPIC en BT_SPEAKER_MAC uit .env.
-    * Bluetooth speaker als sirene-uitvoer.
-
-Threads en gedeelde toestand:
-    Methoden worden vanuit verschillende threads aangeroepen (Actuators,
-    Cloud). ``_sirene_lock`` beschermt het sirene-subproces. De speaker-lus
-    en de foutmelder draaien als daemon-threads. ``VaultState`` wordt niet
-    aangeraakt.
+💡 TWEE SLIMME DINGEN OM TE NOEMEN TIJDENS JE PRESENTATIE:
+- "Waarom crasht de kluis niet als het internet of de speaker uitvalt?"
+  Alle netwerk- en Bluetooth-acties zitten in een `try ... except`-blok. Als
+  wifi even hapert, print het programma netjes een melding, maar blijven het
+  slot en het scherm gewoon doorwerken!
+- "Hoe werkt de sirene zonder dat het programma bevriest?"
+  We starten het afspelen van `sirene.wav` met `subprocess.Popen` op de
+  achtergrond. Zo kan de kluis tegelijkertijd het rode zwaailicht laten
+  knipperen én reageren op de reset-knop (`stop_sirene`).
 """
 
 import os
@@ -29,104 +34,52 @@ import time
 import requests
 from dotenv import load_dotenv
 
+# Laad de geheime instellingen (zoals NTFY_TOPIC en BT_SPEAKER_MAC) uit het `.env` bestand
 load_dotenv()
 
 
 class Notificaties:
     """
-    Push-notificaties (ntfy.sh) en sirene via de Bluetooth speaker.
-
-    Doel:
-        Eigenaar waarschuwen (push) en omstanders afschrikken (sirene).
-
-    Ontwerpkeuzes:
-        * Sirene is non-blocking en voorkomt overlap: een lopend proces wordt
-          niet opnieuw gestart.
-        * Sudo-aware pw-play: zie _sirene_commando().
-        * Instellingen komen uit omgevingsvariabelen met een standaardwaarde.
-        * Netwerkfouten en Bluetooth-fouten worden afgevangen en gelogd, zodat
-          een mislukte melding de kluis nooit laat crashen.
+    Regelt zowel de push-meldingen naar de smartphone als het sirenegeluid via de Bluetooth-speaker.
     """
 
     def __init__(self):
         """
-        Leest configuratie en maakt de sirene-administratie.
-
-        Werking:
-            Zet ``topic`` (env NTFY_TOPIC), ``speaker_mac`` (env
-            BT_SPEAKER_MAC), het pad naar sirene.wav naast dit bestand, een
-            lege procesverwijzing en ``_sirene_lock``.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Maakt ``_sirene_lock`` aan, die ``_sirene_proces`` beschermt
-            tegen gelijktijdige toegang.
+        Haalt het ntfy-onderwerp (topic) en het MAC-adres van de Bluetooth-speaker
+        uit het `.env` bestand en zoekt het pad naar `sirene.wav` op.
         """
         self.topic = os.getenv("NTFY_TOPIC")
         self.speaker_mac = os.getenv("BT_SPEAKER_MAC")
+        # Zoek `sirene.wav` in dezelfde map als waar dit Python-bestand staat
         self.sirene_bestand = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "sirene.wav"
         )
+        # Houdt bij of het geluidsprogramma (`pw-play`) op dit moment al aan het spelen is
         self._sirene_proces = None
+        # Slotje zodat twee threads nooit tegelijk de sirene starten of stoppen
         self._sirene_lock = threading.Lock()
 
     def start_speaker_verbinding(self):
         """
-        Houdt de Bluetooth speaker verbonden (verbindt opnieuw na uitval).
-
-        Werking:
-            Start één daemon-thread die _speaker_loop() draait en dus
-            automatisch stopt als het programma eindigt. Niet blokkerend.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Maakt een nieuwe daemon-thread; roep dit maar één keer aan,
-            anders ontstaan meerdere controle-lussen.
+        Start op de achtergrond een hulpfunctie (`_speaker_loop`) die controleert
+        of de Bluetooth-speaker nog verbonden is, en zo nodig opnieuw verbindt.
         """
-
         threading.Thread(target=self._speaker_loop, daemon=True).start()
 
     def _speaker_loop(self):
         """
-        Oneindige lus die elke 30 s de Bluetooth-verbinding controleert.
-
-        Werking, stap voor stap:
-            1. Vraag ``bluetoothctl info <mac>`` op (timeout 10 s).
-            2. Staat "Connected: yes" er niet in, meld dat en voer
-               ``bluetoothctl connect <mac>`` uit (timeout 20 s).
-            3. Elke fout (bv. bluetoothctl ontbreekt, timeout) wordt gelogd en
-               de lus gaat door.
-            4. Slaap 30 s.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None (eindeloos).
-
-        Threads/locks:
-            Draait in een eigen daemon-thread; raakt geen gedeelde state.
-
-        Hardware/bibliotheken:
-            bluetoothctl (BlueZ) via subprocess. 30 s is een balans tussen
-            snel herstel en weinig Bluetooth-verkeer.
+        Controleert elke 30 seconden via het Linux-commando `bluetoothctl` of de
+        Bluetooth-speaker nog verbonden is ("Connected: yes").
+        Zo niet, dan verbindt de Raspberry Pi automatisch opnieuw!
         """
         while True:
             try:
+                # Vraag de status van de Bluetooth-speaker op bij Linux
                 info = subprocess.run(
                     ["bluetoothctl", "info", self.speaker_mac],
                     capture_output=True, text=True, timeout=10,
                 ).stdout
+                # Staat er geen "Connected: yes" in de tekst? Verbind dan opnieuw!
                 if "Connected: yes" not in info:
                     print(f"[AUDIO] Speaker {self.speaker_mac} niet verbonden, opnieuw verbinden...")
                     subprocess.run(
@@ -135,69 +88,37 @@ class Notificaties:
                     )
             except Exception as e:
                 print(f"[AUDIO] Bluetooth-controle mislukt: {e}")
+            # Wacht 30 seconden voor de volgende controle
             time.sleep(30)
 
     def stop_sirene(self):
         """
-        Stopt de sirene meteen (na reset van het alarm).
-
-        Werking:
-            Neemt ``_sirene_lock``; loopt het afspeelproces nog
-            (``poll() is None``), dan wordt het met ``terminate()`` (SIGTERM)
-            beëindigd. Is er niets actief, dan gebeurt er niets.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Gebruikt ``_sirene_lock``; veilig vanuit elke thread.
-            De foutmelder negeert returncode -15 (SIGTERM), dus deze stop
-            geeft geen foutmelding.
+        Stopt het sirenegeluid onmiddellijk (bijvoorbeeld zodra je het alarm reset met de drukknop).
         """
-
         with self._sirene_lock:
+            # `poll() is None` betekent: het afspeelprogramma draait nog steeds
             if self._sirene_proces and self._sirene_proces.poll() is None:
                 self._sirene_proces.terminate()
 
     def sirene(self):
         """
-        Speelt sirene.wav af via de standaard audio-uitvoer (non-blocking, geen overlap).
-
-        Werking, stap voor stap:
-            1. Neem ``_sirene_lock``.
-            2. Draait er al een sirene, dan terug (geen overlap/stapeling).
-            3. Start het afspeelcommando uit _sirene_commando() met
-               ``Popen`` (stdout weggegooid, stderr opgevangen).
-            4. Start een daemon-thread die de uitvoer afwacht en fouten meldt.
-            5. Faalt het starten, dan wordt dat gelogd.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Gebruikt ``_sirene_lock`` rond ``_sirene_proces``; start een
-            daemon-thread (_meld_sirene_fout). Blokkeert niet op het afspelen.
-
-        Hardware/bibliotheken:
-            pw-play (PipeWire) naar de Bluetooth speaker; subprocess.
+        Start het afspelen van `sirene.wav` op de achtergrond.
+        Als de sirene al aan het loeien is, doet deze functie niets (zodat het geluid
+        niet dubbel door elkaar heen gaat spelen).
         """
-
         with self._sirene_lock:
+            # Speelt de sirene al? Dan hoeven we niets te doen.
             if self._sirene_proces and self._sirene_proces.poll() is None:
                 return
             try:
+                # Start het Linux audio-programma (`pw-play`) op de achtergrond met `Popen`
                 self._sirene_proces = subprocess.Popen(
                     self._sirene_commando(),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=True,
                 )
+                # Controleer in een apart achtergrondtaakje of het afspelen zonder fouten lukt
                 threading.Thread(
                     target=self._meld_sirene_fout, args=(self._sirene_proces,), daemon=True
                 ).start()
@@ -206,31 +127,10 @@ class Notificaties:
 
     def _sirene_commando(self):
         """
-        Onder sudo zit root niet in de audiosessie: speel af als de oorspronkelijke gebruiker.
-
-        Werking:
-            1. Lees ``SUDO_USER``.
-            2. Draait het programma als root (euid 0) via sudo, dan wordt
-               ``sudo -u <gebruiker> XDG_RUNTIME_DIR=/run/user/<uid> pw-play
-               <bestand>`` teruggegeven. XDG_RUNTIME_DIR wijst naar de
-               PipeWire-socket van die gebruiker (uid uit SUDO_UID, standaard
-               1000), anders vindt pw-play de audioserver niet.
-            3. Anders gewoon ``pw-play <bestand>``.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            list[str]: het commando voor subprocess.Popen.
-
-        Threads/locks:
-            Leest alleen omgevingsvariabelen; geen locks.
-
-        Ontwerpkeuzes:
-            GPIO vereist vaak sudo, terwijl PipeWire per gebruiker draait;
-            dit verbindt beide werelden.
+        Geeft het juiste Linux-commando terug om `sirene.wav` af te spelen met `pw-play`.
+        (Als je het script met `sudo` start, zorgt dit stukje ervoor dat het geluid
+        toch via de gewone aangemelde gebruiker naar de Bluetooth-speaker wordt gestuurd).
         """
-
         sudo_user = os.getenv("SUDO_USER")
         if os.geteuid() == 0 and sudo_user:
             uid = os.getenv("SUDO_UID", "1000")
@@ -243,22 +143,8 @@ class Notificaties:
 
     def _meld_sirene_fout(self, proces):
         """
-        Wacht op het sirene-proces en meldt onverwachte fouten.
-
-        Werking:
-            ``communicate()`` wacht tot pw-play klaar is en geeft stderr terug.
-            Een returncode anders dan 0 (normaal) of -15 (door
-            stop_sirene() beëindigd) wordt met de foutuitvoer gelogd.
-
-        Parameters:
-            proces (subprocess.Popen): het te bewaken afspeelproces.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Draait in een eigen daemon-thread; neemt geen lock. Het uitlezen
-            van stderr voorkomt ook dat de pipe vol loopt.
+        Wacht op de achtergrond tot het geluidsbestand klaar is en print alleen een
+        foutmelding als er echt iets misging (code 0 = normaal klaar, code -15 = gestopt met knop).
         """
         fout = proces.communicate()[1]
         if proces.returncode not in (0, -15):
@@ -266,33 +152,14 @@ class Notificaties:
 
     def stuur_push(self, bericht):
         """
-        Stuurt een push-notificatie naar je smartphone via ntfy.sh.
+        Stuurt een push-notificatie naar je smartphone via de dienst `ntfy.sh`.
 
-        Werking, stap voor stap:
-            1. Log het bericht.
-            2. POST de UTF-8 tekst naar ``https://ntfy.sh/<topic>`` met
-               headers Title, Priority=high en Tags (rotating_light,lock)
-               zodat de telefoon luid en met icoon meldt.
-            3. Timeout 5 s zodat een trage verbinding de aanroeper niet lang
-               blokkeert.
-            4. HTTP 200 = afgeleverd; andere status of uitzondering wordt
-               gelogd (niet opnieuw geworpen).
-
-        Parameters:
-            bericht (str): de berichttekst.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Blokkeert de aanroepende thread tot 5 s; geen locks, geen
-            VaultState. De aanroeper gebruikt vlaggen als
-            ``alarm_notified`` om dubbele pushes te voorkomen.
-
-        Hardware/bibliotheken:
-            ``requests`` (HTTPS) naar de publieke ntfy.sh-service.
+        Hoe werkt dit?
+        We sturen een HTTP POST-verzoek (net zoals een webpagina een formulier verstuurt)
+        naar `https://ntfy.sh/<jouw_geheime_topic>`.
+        Iedereen die in de ntfy-app op zijn telefoon geabonneerd is op dat topic,
+        krijgt binnen een seconde een melding met hoge prioriteit en een zwaailicht-icoontje!
         """
-
         print(f"[NTFY PUSH] Versturen naar '{self.topic}': {bericht}")
 
         try:
@@ -304,9 +171,11 @@ class Notificaties:
                     "Priority": "high",
                     "Tags": "rotating_light,lock"
                 },
+                # Wacht maximaal 5 seconden op internet
                 timeout=5,
             )
 
+            # HTTP-code 200 betekent: "OK, goed ontvangen door de server!"
             if resp.status_code == 200:
                 print("[NTFY PUSH] Succesvol afgeleverd op smartphone!")
             else:

@@ -1,58 +1,47 @@
 #!/usr/bin/env python3
-"""MQTT-communicatie van de Smart Vault: ThingSpeak-telemetrie en perimeter-ontvanger.
+"""
+================================================================================
+BESTAND: mqtt_client.py
+DOEL:    Alle MQTT-communicatie (Cloud-dashboard ThingSpeak + Lokale Pico 2 W).
+================================================================================
 
-Rol in de architectuur:
-    Dit bestand bevat twee onafhankelijke MQTT-clients (paho-mqtt):
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Wat is MQTT?
+MQTT is een superlicht communicatieprotocol dat speciaal gemaakt is voor IoT.
+Het werkt met een **Broker** (een soort postkantoor) en **Topics** (postvakjes):
+- Een **Publisher** (zender) stuurt een berichtje naar een topic, bijv. `vault/perimeter/distance`.
+- Een **Subscriber** (ontvanger) abonneert zich op dat topic en krijgt elk nieuw
+  bericht automatisch doorgestuurd.
 
-    - ``MQTTClient``: PUBLISHER naar de cloud (ThingSpeak, mqtt3.thingspeak.com).
-      Wordt door de cloud-thread in main.py elke TELEMETRY_INTERVAL_S (15 s,
-      ThingSpeak-limiet) aangeroepen met lux, temperatuur, afstand en modus.
-    - ``PerimeterListener``: SUBSCRIBER op de lokale broker (127.0.0.1) die de
-      afstandsmetingen van de Pico WH (ultrasone perimetersensor) ontvangt en
-      doorgeeft aan de callback ``on_perimeter_afstand`` in main.py.
+In ons project gebruiken we MQTT op TWEE manieren (daarom staan er 2 klassen in dit bestand):
+1. `MQTTClient` (PUBLISHER naar de Cloud):
+   Stuurt elke 15 seconden onze meetwaarden (licht, temperatuur, afstand, status en
+   gekozen cijfer) naar het online **ThingSpeak** dashboard (`mqtt3.thingspeak.com`).
+2. `PerimeterListener` (SUBSCRIBER op de Raspberry Pi zelf):
+   Luistert naar de lokale MQTT-broker op de Pi (`127.0.0.1`) waar de **Pico 2 W**
+   elke halve seconde de gemeten afstand van de ultrasone sensor naartoe stuurt!
 
-Threads en gedeelde state:
-    Beide klassen gebruiken ``loop_start()`` van paho: het netwerkverkeer en de
-    callbacks draaien in een eigen achtergrondthread van paho. Dit bestand
-    raakt ``VaultState`` niet rechtstreeks en gebruikt ``state.lock`` niet; de
-    PerimeterListener-callback (``on_perimeter_afstand`` in main.py) neemt zelf
-    de lock. ``MQTTClient.connected`` wordt vanuit de paho-thread gezet en
-    elders alleen informatief gelezen (enkelvoudige bool).
-
-Configuratie:
-    ThingSpeak-credentials komen uit omgevingsvariabelen / ``.env``
-    (python-dotenv), zodat er geen geheimen in de broncode staan.
+💡 TIP VOOR JE PRESENTATIE (Waarom een `.env` bestand?):
+Onze ThingSpeak-wachtwoorden staan NIET in de Python-code, maar in een apart
+`.env`-bestand dat we inladen met `load_dotenv()`. Zo komen je geheime sleutels
+nooit per ongeluk op GitHub te staan!
 """
 
 import os
 import paho.mqtt.client as mqtt
 from dotenv import load_dotenv
 
+# Laad de geheime ThingSpeak-inloggegevens uit het `.env`-bestand
 load_dotenv()
+
 
 class MQTTClient:
     """
-    MQTT client voor de Smart Vault.
-
-    ThingSpeak:
-        field1 = licht (lux)
-        field2 = temperatuur (C)
-
-    Doel:
-        Publiceert meetwaarden naar het ThingSpeak-kanaal via MQTT (QoS 0,
-        niet retained).
-
-    Werking:
-        De constructor leest credentials uit de omgeving; ``connect()`` start
-        de verbinding en de paho-netwerkthread; ``stuur_*`` publiceert een
-        ``field1=...&field2=...``-payload op ``channels/<id>/publish``;
-        ``close()`` stopt de thread en verbreekt de verbinding.
-
-    Gedeelde state / threads:
-        Raakt ``VaultState`` niet. Wordt vanuit de cloud-thread van main.py
-        aangeroepen; de callbacks draaien in de paho-thread.
+    DEEL 1: Stuurt elke 15 seconden de kluisgegevens door naar ThingSpeak in de cloud.
     """
 
+    # Het adres en poortnummer van de ThingSpeak MQTT-broker
     MQTT_HOST = "mqtt3.thingspeak.com"
     MQTT_PORT = 1883
     MQTT_KEEPALIVE = 60
@@ -60,21 +49,8 @@ class MQTTClient:
     CHANNEL_ID = "3529335"
 
     def __init__(self):
-        """Leest de ThingSpeak-credentials en maakt de paho-client aan (nog niet verbonden).
-
-        Werking (stap voor stap):
-            1. Lees THINGSPEAK_MQTT_CLIENT_ID, _USERNAME, _PASSWORD en
-               THINGSPEAK_CHANNEL_ID uit de omgeving (via ``.env``).
-            2. Ontbreekt client-id, gebruikersnaam of wachtwoord -> ``RuntimeError``
-               (main.py vangt dit op en print dan alleen telemetrie).
-            3. Bouw het publish-topic ``channels/<channel_id>/publish``.
-            4. Maak de ``mqtt.Client`` (callback API versie 2), zet de
-               inloggegevens en koppel de connect/disconnect-callbacks.
-
-        Parameters: geen.
-        Retourwaarde: geen (constructor).
-        Raises: RuntimeError bij ontbrekende credentials.
-        Gedeelde state: geen ``VaultState``.
+        """
+        Haalt de ThingSpeak-inloggegevens uit het `.env`-bestand en zet de MQTT-client klaar.
         """
         self.client_id = os.getenv(
             "THINGSPEAK_MQTT_CLIENT_ID"
@@ -92,6 +68,7 @@ class MQTTClient:
             "THINGSPEAK_CHANNEL_ID"
         )
 
+        # Controleer of alle inloggegevens wel ingevuld zijn in `.env`
         if not all([
             self.client_id,
             self.username,
@@ -102,10 +79,12 @@ class MQTTClient:
                 "Controleer de environment variables."
             )
 
+        # Het vaste topic-formaat dat ThingSpeak verwacht om data op te ontvangen
         self.topic = f"channels/{self.channel_id}/publish"
 
         self.connected = False
 
+        # Maak de Paho MQTT-client aan en stel gebruikersnaam en wachtwoord in
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
             self.client_id
@@ -116,12 +95,13 @@ class MQTTClient:
             self.password
         )
 
-        # Callbacks
+        # Koppel twee hulpfuncties (callbacks) die automatisch worden aangeroepen
+        # zodra de verbinding gelukt is (`on_connect`) of verbroken wordt (`on_disconnect`).
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
 
     # ---------------------------------------------------------
-    # MQTT callbacks
+    # Automatische meldfuncties (MQTT callbacks)
     # ---------------------------------------------------------
 
     def _on_connect(
@@ -132,17 +112,9 @@ class MQTTClient:
         reason_code,
         properties
     ):
-        """Paho-callback (draait in de paho-netwerkthread) na een verbindingspoging.
-
-        Werking: bij ``reason_code == 0`` wordt ``self.connected`` True,
-        anders False met een foutmelding.
-
-        Parameters (paho callback API v2): client, userdata, flags,
-        reason_code (0 = succes), properties; alleen ``reason_code`` wordt
-        gebruikt.
-        Retourwaarde: geen.
-        Gedeelde state: schrijft ``self.connected`` (geen lock nodig voor een
-        enkele bool); geen ``VaultState``.
+        """
+        Wordt automatisch aangeroepen zodra ThingSpeak reageert op onze verbindingspoging.
+        `reason_code == 0` betekent: Alles is gelukt, we zijn verbonden!
         """
         if reason_code == 0:
             self.connected = True
@@ -161,16 +133,8 @@ class MQTTClient:
         reason_code,
         properties
     ):
-        """Paho-callback (paho-netwerkthread) bij het verbreken van de verbinding.
-
-        Werking: zet ``self.connected`` op False en print de reden. Paho
-        probeert zelf automatisch opnieuw te verbinden zolang ``loop_start``
-        actief is.
-
-        Parameters (paho callback API v2): client, userdata,
-        disconnect_flags, reason_code, properties.
-        Retourwaarde: geen.
-        Gedeelde state: schrijft ``self.connected``; geen ``VaultState``.
+        """
+        Wordt automatisch aangeroepen als de verbinding met ThingSpeak wegvalt.
         """
         self.connected = False
 
@@ -179,23 +143,18 @@ class MQTTClient:
         )
 
     # ---------------------------------------------------------
-    # Connect
+    # Verbinden met ThingSpeak
     # ---------------------------------------------------------
 
     def connect(self):
-        """Verbindt met de ThingSpeak-broker en start de achtergrondthread.
-
-        Werking: ``client.connect`` naar mqtt3.thingspeak.com:1883 (keepalive
-        60 s) en daarna ``loop_start()``, dat in een eigen thread het
-        netwerkverkeer, keepalive en callbacks afhandelt zodat de
-        aanroeper niet blokkeert.
-
-        Parameters: geen.
-        Retourwaarde: geen. Kan een exceptie gooien als de broker onbereikbaar
-        is (main.py vangt die op en gaat door zonder telemetrie).
-        Gedeelde state: geen ``VaultState``; start de paho-thread.
         """
+        Maakt verbinding met de ThingSpeak-server en start `loop_start()`.
 
+        💡 WAT DOET `loop_start()`?
+        Hiermee handelt de Paho-bibliotheek al het internetverkeer zelf op de
+        achtergrond af (en herverbindt hij automatisch als wifi even hapert),
+        zodat ons hoofdprogramma nooit hoeft te wachten!
+        """
         print(
             f"Connecting to MQTT broker: {self.MQTT_HOST}"
         )
@@ -206,11 +165,11 @@ class MQTTClient:
             self.MQTT_KEEPALIVE
         )
 
-        # MQTT netwerkverkeer in achtergrondthread
+        # Start de netwerk-achtergrondtaak van Paho MQTT
         self.client.loop_start()
 
     # ---------------------------------------------------------
-    # Sensor data versturen
+    # Eenvoudige testfunctie (alleen licht en temperatuur)
     # ---------------------------------------------------------
 
     def stuur_sensorwaarden(
@@ -219,27 +178,9 @@ class MQTTClient:
         licht
     ):
         """
-        Stuurt Smart Vault sensordata naar ThingSpeak.
-
-        field1 = licht
-        field2 = temperatuur
-
-        Werking: bouwt een payload ``field1=<lux>&field2=<temp>&status=...``,
-        publiceert die met QoS 0 (geen retain) en controleert de
-        returncode van paho.
-
-        Parameters:
-            temperatuur (float): graden Celsius (2 decimalen).
-            licht (float): lux (1 decimaal).
-
-        Retourwaarde: True bij succesvol aanbieden aan paho
-        (``MQTT_ERR_SUCCESS``), anders False. Dit bevestigt niet dat
-        ThingSpeak het bericht ook verwerkt heeft.
-
-        Gedeelde state: geen ``VaultState``. Wordt enkel in de losse test
-        onderaan gebruikt; de hoofdapplicatie gebruikt ``stuur_telemetrie``.
+        Stuurt alleen licht (field1) en temperatuur (field2) naar ThingSpeak.
+        Wordt gebruikt als je dit bestand los test (`python3 mqtt_client.py`).
         """
-
         payload = (
             f"field1={licht:.1f}"
             f"&field2={temperatuur:.2f}"
@@ -266,39 +207,19 @@ class MQTTClient:
         return False
 
     # ---------------------------------------------------------
-    # Telemetrie van de volledige kluis versturen
+    # Volledige kluis-telemetrie versturen (gebruikt door main.py)
     # ---------------------------------------------------------
 
     def stuur_telemetrie(self, lux, temperatuur, afstand_cm, status_code, status, cijfer):
         """
-        Stuurt de kluis-telemetrie naar ThingSpeak.
-
-        field1 = licht (lux)
-        field2 = temperatuur (C)
-        field3 = perimeter afstand (cm)
-        field4 = status (0=vergrendeld, 1=2FA, 2=geopend, 3=alarm)
-        field5 = geselecteerd potmetercijfer (0-9)
-
-        Werking: bouwt een payload met vijf velden plus ``status=<modus>``
-        en publiceert die met QoS 0 (geen retain). Het ThingSpeak-limiet van
-        minstens 15 s tussen updates wordt door de aanroeper bewaakt
-        (TELEMETRY_INTERVAL_S in de cloud-thread).
-
-        Parameters:
-            lux (float): lichtsterkte (1 decimaal).
-            temperatuur (float): graden Celsius (2 decimalen).
-            afstand_cm (float): perimeterafstand in cm (1 decimaal).
-            status_code (int): modus als getal, uit ``vault_state.MODE_CODES``
-                (ook 4 = LOCKOUT bestaat daar).
-            status (str): modus als tekst, in het ThingSpeak-statusveld.
-            cijfer (int): geselecteerd cijfer na hysterese, zoals op het scherm.
-
-        Retourwaarde: True als paho het bericht heeft aanvaard, anders False.
-
-        Gedeelde state: geen ``VaultState``; de cloud-thread geeft een
-        snapshot mee die onder ``state.lock`` werd gemaakt.
+        Stuurt alle 5 de meetwaarden van de Smart Vault in één keer naar ThingSpeak:
+        - `field1`: Lichtsterkte in de kluis (lux)
+        - `field2`: Temperatuur in de kluis (°C)
+        - `field3`: Afstand van de persoon voor de kluis (cm)
+        - `field4`: Huidige modus als getal (0=PIN, 1=Spraak, 2=Open, 3=Alarm, 4=Geblokkeerd)
+        - `field5`: Het gekozen cijfer op de draaiknop (0 t/m 9)
+        - `status`: De naam van de modus als tekst (bijv. "PIN_INPUT")
         """
-
         payload = (
             f"field1={lux:.1f}"
             f"&field2={temperatuur:.2f}"
@@ -308,6 +229,7 @@ class MQTTClient:
             f"&status={status}"
         )
 
+        # Publiceer het bericht op het ThingSpeak-kanaal
         message = self.client.publish(
             topic=self.topic,
             payload=payload,
@@ -324,20 +246,13 @@ class MQTTClient:
         return False
 
     # ---------------------------------------------------------
-    # Cleanup
+    # Netjes afsluiten
     # ---------------------------------------------------------
 
     def close(self):
-        """Stopt de MQTT-thread en verbreekt de ThingSpeak-verbinding.
-
-        Werking: ``loop_stop()`` stopt de paho-netwerkthread, daarna
-        ``disconnect()``. Wordt in de ``finally`` van ``main()`` aangeroepen.
-
-        Parameters: geen.
-        Retourwaarde: geen.
-        Gedeelde state: geen ``VaultState``.
         """
-
+        Stopt de achtergrondtaak en verbreekt netjes de verbinding met ThingSpeak.
+        """
         print("Closing MQTT connection...")
 
         self.client.loop_stop()
@@ -348,23 +263,13 @@ class MQTTClient:
 
 class PerimeterListener:
     """
-    Lokale MQTT subscriber op de Pi 5 voor de perimeter-afstand van de Pico WH.
-    De callback krijgt de afstand in cm.
+    DEEL 2: Luistert op de Raspberry Pi naar de afstandsmetingen van de Pico 2 W.
 
-    Doel:
-        Ontvangt de afstandsmetingen van de Pico WH (perimetersensor buiten
-        de kluis) via een lokale MQTT-broker (bv. Mosquitto op de Pi 5) en
-        geeft ze door aan de applicatie.
-
-    Werking:
-        ``connect()`` verbindt en start de paho-thread; bij succesvolle
-        verbinding wordt geabonneerd op ``vault/perimeter/distance``. Elk
-        bericht wordt als float geparsed en aan ``on_afstand`` gegeven.
-
-    Gedeelde state / threads:
-        De callbacks draaien in de paho-netwerkthread, niet in de
-        hoofdthread. ``on_afstand`` (main.on_perimeter_afstand) neemt zelf
-        ``state.lock``; deze klasse raakt ``VaultState`` niet.
+    Hoe werkt dit?
+    Op de Raspberry Pi draait een lokale MQTT-broker (Mosquitto) op adres `127.0.0.1`
+    (dat betekent: "deze computer zelf"). De Pico 2 W stuurt via Wi-Fi elke 0,5 seconde
+    de gemeten afstand in centimeters naar het topic `vault/perimeter/distance`.
+    Deze klasse vangt dat getal op en geeft het direct door aan `main.py`!
     """
 
     BROKER = "127.0.0.1"
@@ -372,18 +277,10 @@ class PerimeterListener:
     TOPIC = "vault/perimeter/distance"
 
     def __init__(self, on_afstand):
-        """Maakt de lokale MQTT-subscriber aan (nog niet verbonden).
-
-        Parameters:
-            on_afstand (callable): functie ``f(afstand_cm: float)`` die bij
-                elk geldig bericht wordt aangeroepen, in de paho-thread.
-
-        Werking: bewaart de callback, maakt een paho-client (callback API v2)
-        met vast client-id ``Pi5_SmartVault_Master`` en koppelt
-        ``on_connect``/``on_message``.
-
-        Retourwaarde: geen (constructor).
-        Gedeelde state: geen ``VaultState``.
+        """
+        Zet de lokale MQTT-ontvanger klaar.
+        `on_afstand` is de functie uit `main.py` die we aanroepen zodra er een
+        nieuwe afstand binnenkomt.
         """
         self.on_afstand = on_afstand
 
@@ -395,15 +292,9 @@ class PerimeterListener:
         self.client.on_message = self._on_message
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
-        """Paho-callback na (her)verbinding: abonneert op het perimeter-topic.
-
-        Werking: bij ``reason_code == 0`` wordt ``subscribe(TOPIC, qos=0)``
-        aangeroepen. Dit gebeurt in de callback zodat het abonnement na
-        elke automatische herverbinding opnieuw wordt gelegd.
-
-        Parameters (paho callback API v2): client, userdata, flags,
-        reason_code, properties.
-        Retourwaarde: geen. Gedeelde state: geen; draait in de paho-thread.
+        """
+        Zodra we verbonden zijn met onze lokale broker, abonneren (`subscribe`) we ons
+        meteen op het topic `vault/perimeter/distance`.
         """
         if reason_code == 0:
             print(f"[MQTT] Verbonden met lokale broker ({self.BROKER}). Subscribed op {self.TOPIC}")
@@ -412,35 +303,23 @@ class PerimeterListener:
             print(f"[MQTT] Verbinding mislukt met code: {reason_code}")
 
     def _on_message(self, client, userdata, msg):
-        """Paho-callback bij een bericht op het perimeter-topic.
-
-        Werking: decodeer de payload als UTF-8, parse naar float en roep
-        ``on_afstand`` aan. Ongeldige payloads (geen getal) worden stil
-        genegeerd zodat één foutief bericht de netwerkthread niet stoort.
-
-        Parameters: client, userdata, msg (``msg.payload`` bevat de afstand
-        in cm als tekst).
-        Retourwaarde: geen.
-        Gedeelde state: geen rechtstreeks; de callback ``on_afstand`` neemt
-        ``state.lock``.
+        """
+        Wordt automatisch aangeroepen telkens als de Pico 2 W een nieuwe afstand stuurt.
+        We zetten de ontvangen tekst (bijv. `"42.5"`) om naar een kommagetal (`float`)
+        en geven dat door aan `self.on_afstand(afstand)`.
         """
         try:
             afstand = float(msg.payload.decode("utf-8").strip())
         except ValueError:
+            # Als er per ongeluk iets binnenkomt dat geen geldig getal is, negeren we het veilig
             return
 
         self.on_afstand(afstand)
 
     def connect(self):
-        """Verbindt met de lokale broker en start de paho-netwerkthread.
-
-        Werking: ``connect`` naar 127.0.0.1:1883 (keepalive 60 s) en
-        ``loop_start()``. Een onbereikbare broker geeft alleen een
-        waarschuwing; het systeem werkt dan zonder perimeterdata (de
-        meting veroudert na PERIMETER_STALE_S en wordt genegeerd).
-
-        Parameters: geen. Retourwaarde: geen.
-        Gedeelde state: geen ``VaultState``; start de paho-thread.
+        """
+        Verbindt met de lokale MQTT-broker op de Raspberry Pi en start het luisteren
+        op de achtergrond (`loop_start`).
         """
         try:
             self.client.connect(self.BROKER, self.PORT, keepalive=60)
@@ -449,20 +328,16 @@ class PerimeterListener:
             print(f"[MQTT WAARSCHUWING] Lokale broker nog niet bereikbaar: {e}")
 
     def close(self):
-        """Stopt de paho-netwerkthread en verbreekt de lokale verbinding.
-
-        Parameters: geen. Retourwaarde: geen.
-        Gedeelde state: geen ``VaultState``; aangeroepen in de ``finally``
-        van ``main()``.
+        """
+        Stopt het luisteren en verbreekt de lokale MQTT-verbinding bij het afsluiten.
         """
         self.client.loop_stop()
         self.client.disconnect()
 
 
-# -------------------------------------------------------------
-# Losse test
-# -------------------------------------------------------------
-
+# ==============================================================================
+# LOSSE TEST: Wordt alleen uitgevoerd als je `python3 mqtt_client.py` typt
+# ==============================================================================
 if __name__ == "__main__":
 
     mqtt_client = MQTTClient()
@@ -470,7 +345,7 @@ if __name__ == "__main__":
     try:
         mqtt_client.connect()
 
-        # Alleen testwaarden
+        # Stuur één keer twee testwaarden naar ThingSpeak
         mqtt_client.stuur_sensorwaarden(
             temperatuur=22.5,
             licht=250.0

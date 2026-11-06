@@ -1,129 +1,107 @@
 #!/usr/bin/env python3
 """
-Configuratie, drempelwaarden en gedeelde systeemstatus van de Smart Vault.
+================================================================================
+BESTAND: vault_state.py
+DOEL:    Alle instellingen (constanten) en het "gedeelde geheugen" van de kluis.
+================================================================================
 
-Rol van dit bestand:
-    Enige plek voor alle instelbare constanten (PIN, tijden, drempels) en
-    voor ``VaultState``, het gedeelde geheugen waarmee de threads van main.py
-    (Button, Sensors-OLED, Actuators, Cloud, Voice) met elkaar communiceren.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Ons project gebruikt meerdere "threads" (taken die tegelijkertijd op de
+achtergrond draaien, zoals sensoren uitlezen én op de knop letten).
+Omdat al die taken met elkaar moeten kunnen praten, bewaren we alle
+informatie op één centrale plek: de klasse `VaultState`. Zie dit als het
+"notitiebord" van de kluis waar elke taak op kan kijken en schrijven.
 
-Threads en locks:
-    ``VaultState.lock`` beschermt alle velden: lees of schrijf ze alleen
-    binnen ``with state.lock``. ``VaultState.spi_lock`` is een aparte lock
-    voor de gedeelde SPI-bus (MCP3008 en OLED). Tijdstippen zijn
-    ``time.monotonic()``-waarden, zodat klokcorrecties (NTP) niets verstoren.
+💡 TIP VOOR JE PRESENTATIE (Waarom een Lock?):
+Als twee taken op exact hetzelfde moment op hetzelfde notitiebord schrijven,
+krijg je fouten (dat heet een 'race condition'). Daarom gebruiken we een
+slotje (`state.lock`). Met `with state.lock:` zegt een taak eigenlijk:
+"Ik heb nu even de praatstok, wacht heel even tot ik klaar ben met lezen
+of schrijven."
 """
 
 import threading
 
 # ==============================================================================
-# Configuratie & drempelwaarden
+# 1. ALGEMENE INSTELLINGEN & DREMPELWAARDEN (Makkelijk op één plek aan te passen)
 # ==============================================================================
-# Cijfers 0-9 via de potmeter; drie cijfers is een bruikbare balans tussen
-# veiligheid en snelheid van invoeren.
+
+# De geheime 3-cijferige pincode. Elk cijfer (0 t/m 9) kies je met de draaiknop (potmeter).
 SECRET_PIN = [4, 7, 2]           # De 3-cijferige kluiscode (in te voeren via potmeter 0-9)
-# Handig tijdens ontwikkeling of als de USB-microfoon ontbreekt; moet False
-# blijven in productie, anders vervalt de tweede factor.
+
+# Stel deze in op True als je wilt testen ZONDER microfoon.
+# Bij False (normaal gebruik) moet je na de pincode ook het wachtwoord inspreken (2FA).
 BYPASS_VOICE_2FA = False         # True slaat de spraakstap over (zonder USB-microfoon)
-# Dezelfde zin wordt als enige toegestane grammatica in Vosk geladen.
+
+# Het geheime woord dat je moet uitspreken bij stap 2 (Factor 2: Spraakherkenning).
 VOICE_PASSPHRASE = "open"  # Geheime gesproken passphrase voor Factor 2
-# 20 s geeft genoeg tijd om te spreken zonder dat de kluis lang half-open blijft.
+
+# Hoeveel seconden je krijgt om het wachtwoord in te spreken voordat de kluis
+# weer terugspringt naar het pincode-scherm.
 VOICE_TIMEOUT_S = 20.0           # Luistertijd voor Factor 2 voordat de kluis terugvalt naar PIN-invoer
 
-# Daglicht is ver onder 50 lux binnen; test-waarde zodat sabotage niet bij
-# gewoon daglicht afgaat. Productiewaarde moet lager (bv. ~100-500 lux).
+# Als de kluis dicht is, hoort het binnenin donker te zijn.
+# Komt er plots meer dan 50 lux licht binnen? Dan breekt er iemand in (Sabotage/Braak)!
 LUX_SABOTAGE_THRESHOLD = 50.0  # Voorlopig hoog gezet voor testen in daglicht
-# Kamertemperatuur ~20-22 °C; 30 °C laat het alarm testen met een hand/föhn.
-# Productiewaarde ligt veel hoger (bv. 50-60 °C).
+
+# Als de temperatuur boven deze waarde komt, gaat het brandalarm af.
+# (Staat op 30.0 °C zodat je het tijdens de demo makkelijk kunt testen met je vinger of adem).
 TEMP_FIRE_THRESHOLD_C = 30.0     # Voorlopig laag gezet voor testen in kamerwarmte
-# 10 metingen bij 10 Hz = 1 s aaneengesloten: voorkomt vals alarm door ruis.
+
+# Om te voorkomen dat één toevallige meetfout meteen het brandalarm laat afgaan,
+# moet de temperatuur 10 metingen achter elkaar (10x per seconde = 1 seconde lang) te hoog zijn.
 FIRE_CONFIRM_READINGS = 10       # Opeenvolgende metingen (10 Hz) boven de drempel voor brandalarm
-# 12 van 1024 (~1,2%) is kleiner dan een cijferbreedte (~102) maar groter dan
-# de ADC-ruis, zodat de potmeter op een grens niet tussen twee cijfers flikkert.
+
+# De draaiknop (potmeter) geeft een getal van 0 tot 1023. Als de knop precies op de grens
+# tussen bijv. cijfer 4 en 5 staat, kan het getal door kleine stroomschommelingen (ruis)
+# telkens verspringen (4-5-4-5). Met een "drempel" (hysteresis) van 12 punten verandert
+# het cijfer pas als je écht duidelijk voorbij de grens draait.
 HYSTERESIS_10BIT = 12            # Dode band (op 0..1023) tegen flikkeren tussen twee cijfers
-# Drie is gebruikelijk (zoals een pinautomaat): tolerant maar niet te raden.
+
+# Hoe vaak je een foute pincode mag invoeren voordat de kluis tijdelijk blokkeert.
 MAX_PIN_ATTEMPTS = 3             # Pogingen voor de wachtperiode ingaat
-# Lang genoeg om op te vallen, kort genoeg om niet te storen.
+
+# Hoe lang (in seconden) de rode LED knippert en "FOUTE CODE!" op het scherm staat.
 WRONG_PIN_BLINK_S = 5.0          # Zwaailicht na een foute code
-# 300 s maakt brute force onpraktisch zonder een gebruiker permanent buiten te sluiten.
+
+# Hoe lang (in seconden) de kluis geblokkeerd blijft na 3 foute pogingen (Lockout).
+# (Staat op 10 seconden zodat je tijdens de presentatie niet 5 minuten hoeft te wachten!).
 PIN_LOCKOUT_S = 10.0              # Wachtperiode (10 sec) na de laatste foute poging
-# 40 cm = armlengte: iemand die zo dicht staat is bezig met de kluis.
+
+# Staat iemand dichterbij dan 40 cm? Dan staat diegene vlak voor de kluis.
 LOITER_DISTANCE_CM = 40.0        # Dichterbij dan dit = loitering
-# Een minuut geeft eigenaren tijd om de code in te voeren, maar wie blijft
-# treuzelen zonder iets te doen valt op.
+
+# Als iemand langer dan 15 seconden vlak voor de kluis blijft hangen ("loitering")
+# ZONDER aan de knop te draaien of te drukken, vertrouwen we het niet -> Alarm!
 LOITER_ALARM_S = 15.0            # Zo lang voor de kluis staan zonder iets te doen = alarm
-# De Pico meldt elke 0,5 s; 10 s = ca. 20 gemiste metingen, dus waarschijnlijk offline.
+
+# De Pico 2 W stuurt elke 0,5 seconde de afstand door via Wi-Fi (MQTT).
+# Hebben we al 10 seconden niets gehoord? Dan is de Pico waarschijnlijk uitgeschakeld
+# en negeren we de oude afstandsmeting.
 PERIMETER_STALE_S = 10.0         # Afstandsmeting ouder dan dit wordt genegeerd (Pico offline)
 
-# ThingSpeak accepteert op de gratis laag maximaal één update per 15 s.
+# De gratis versie van ThingSpeak staat maximaal 1 bericht per 15 seconden toe.
 TELEMETRY_INTERVAL_S = 15.0      # ThingSpeak-limiet: minstens 15 s tussen updates
 
-# Modi: "PIN_INPUT", "VOICE_2FA", "UNLOCKED", "ALARM", "LOCKOUT"
-# De numerieke codes worden als veld naar ThingSpeak gestuurd (grafiek/dashboard).
+# De 5 mogelijke toestanden (states) waarin onze kluis kan zitten:
+# 0 = PIN_INPUT (Op slot), 1 = VOICE_2FA (Spraak), 2 = UNLOCKED (Open), 3 = ALARM, 4 = LOCKOUT (Geblokkeerd)
 MODE_CODES = {"PIN_INPUT": 0, "VOICE_2FA": 1, "UNLOCKED": 2, "ALARM": 3, "LOCKOUT": 4}
 
 
 class VaultState:
     """
-    Gedeelde systeemstatus van de kluis (één instantie, gedeeld door alle threads).
+    Houdt alle actuele informatie van de kluis bij op één plek.
 
-    Doel:
-        Eén centrale plek voor modus, sensorwaarden, timers en
-        eenmalig-actie-vlaggen, zodat threads niet rechtstreeks van elkaar
-        afhangen.
-
-    Werking:
-        Threads schrijven hun meetwaarden of gebeurtenissen in dit object; de
-        actuator-thread leest die en bepaalt de modus en acties.
-
-    Threads/locks:
-        Alle velden alleen aanraken binnen ``with state.lock``. ``spi_lock``
-        staat los daarvan en dient uitsluitend om de SPI-bus tussen ADC en OLED
-        te scheiden. Houd beide locks bij voorkeur niet tegelijk vast om
-        deadlocks te vermijden.
-
-    Ontwerpkeuzes:
-        Eenmalig-actie-vlaggen (``unlock_executed``, ``alarm_notified`` e.d.)
-        zorgen dat een motor, push of sirene niet bij elke lus-iteratie opnieuw
-        wordt gestart.
+    Hoe werkt het?
+    - De sensor-taak vult hier bijv. de gemeten temperatuur en lichtsterkte in.
+    - De knop-taak vult hier de ingevoerde pincode en de nieuwe status (`mode`) in.
+    - De motor/LED-taak kijkt naar `mode` en stuurt de stappenmotor, LED en sirene aan.
     """
 
     def __init__(self):
         """
-        Zet alle velden op hun beginwaarde (kluis dicht, wachtend op PIN).
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Velden:
-            lock: algemene threadslot voor alle onderstaande velden.
-            spi_lock: voorkomt gelijktijdige SPI-toegang tussen ADC en OLED.
-            running: False = alle threads moeten stoppen.
-            mode: huidige modus, een sleutel uit MODE_CODES.
-            current_digit: cijfer (0-9) waar de potmeter nu op staat.
-            entered_pin: reeds bevestigde cijfers van de PIN-invoer.
-            failed_attempts: aantal foute PIN-pogingen sinds de laatste reset.
-            lux: laatste lichtmeting in lux.
-            temp_c: laatste (mediaan-)temperatuur in °C; 20.0 is een
-                neutrale beginwaarde onder de brandgrens.
-            perimeter_cm: laatste afstand van de Pico; 999.0 = niemand/geen data.
-            loitering_alert: True zolang iemand te lang dichtbij staat.
-            perimeter_ts: monotonic-tijd van de laatste afstandsmeting.
-            loiter_since: monotonic-tijd van het begin van loitering, of None.
-            last_activity: monotonic-tijd van de laatste draai of knopdruk.
-            alarm_reason: tekst waarom het alarm afging (leeg = geen alarm).
-            unlock_executed: motor één keer draaien per ontgrendeling.
-            lock_executed: motor één keer terugdraaien per vergrendeling;
-                begint True omdat de kluis dicht is.
-            alarm_notified: ntfy-push één keer per alarm.
-            motor_busy: True zolang de stappenmotor draait.
-            wrong_pin_until: tot dit monotonic-tijdstip wordt "foute code" getoond.
-            lockout_until: monotonic-tijdstip waarop de wachtperiode eindigt.
-            lockout_push_pending: push één keer versturen bij start wachtperiode.
-            lockout_siren_pending: korte sirene één keer afspelen bij start wachtperiode.
+        Zet alle variabelen klaar met hun veilige startwaarde (kluis op slot).
         """
         self.lock = threading.Lock()
         self.spi_lock = threading.Lock()  # Voorkomt gelijktijdige SPI-toegang tussen ADC en OLED

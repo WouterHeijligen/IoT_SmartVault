@@ -1,29 +1,32 @@
 #!/usr/bin/env python3
-"""SSD1306 OLED-aansturing (128x64, SPI) voor de Smart Vault.
+"""
+================================================================================
+BESTAND: display.py
+DOEL:    Aansturing van het kleine OLED-schermpje (128x64 pixels) op de kluis.
+================================================================================
 
-Rol in de architectuur:
-    Dit bestand is de enige weergavelaag. ``main.py`` roept
-    ``Display.toon_kluisscherm`` aan vanuit de sensor-/OLED-thread (10 Hz) met
-    een snapshot van de ``VaultState`` (modus, lux, temperatuur, pin, ...).
-    Dit bestand leest zelf NOOIT ``VaultState`` en gebruikt geen
-    ``state.lock``: alle gegevens komen als parameters binnen zodat de lock
-    kort kan blijven.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+Dit bestand zorgt voor alles wat je op het OLED-schermpje (type SSD1306) ziet:
+- Bovenaan een handige statusbalk met Licht (L), Temperatuur (T) en Afstand (A).
+- Daaronder de huidige status van de kluis (Pincode invoeren, Spraakwachtwoord,
+  Kluis Geopend, Foute Code of Alarm).
 
-Hardware en bibliotheken:
-    - adafruit_ssd1306 (SSD1306_SPI) stuurt het OLED via SPI0 aan, met
-      GPIO-pinnen voor RST (GPIO 16) en DC (GPIO 6). Het OLED heeft geen CS;
-      de module houdt de SPI-ingang permanent geselecteerd.
-    - digitalio/board (Adafruit Blinka) leveren de pinabstractie op de Pi 5.
-    - Pillow (PIL) tekent in een 1-bit beeld in het geheugen; pas daarna wordt
-      het in één keer naar het scherm gestuurd (geen flikkering).
-    - textwrap breekt lange tekst af op de 128 px brede display.
+Hoe werkt het tekenen op zo'n schermpje?
+We tekenen niet rechtstreeks pixel voor pixel op het scherm (want dan zou het
+beeld flikkeren). In plaats daarvan maken we met de Python-bibliotheek `PIL`
+(Pillow) eerst een zwart-wit plaatje in het geheugen van de Raspberry Pi.
+Pas als alle tekst en lijntjes op dat plaatje staan, sturen we het hele
+plaatje in één keer naar het scherm met `self.oled.show()`!
 
-Threading / SPI-lock:
-    De SPI0-bus wordt gedeeld met de MCP3008-ADC (zie ``sensors.py``). Deze
-    klasse is zelf NIET thread-safe en neemt de lock niet; de aanroeper
-    (main.py) moet ``state.spi_lock`` vasthouden rond elke aanroep die naar
-    het scherm schrijft (``show()``), anders kunnen ADC- en OLED-verkeer
-    elkaar corrumperen.
+💡 GOEDE VRAAG OP JE VERDEDIGING (Waarom zit de SPI-kabel gedeeld met de MCP3008?):
+Zowel het OLED-scherm als de MCP3008 sensor-chip gebruiken de snelle SPI-datakabel.
+Ons OLED-schermpje heeft géén eigen 'Chip Select' (CS) pin om hem uit te zetten
+terwijl we de sensoren uitlezen. Daarom:
+1. Gebruiken we in `main.py` een slotje (`state.spi_lock`), zodat we nooit tegelijk
+   sensoren lezen én op het scherm tekenen.
+2. Roepen we na het lezen van de sensoren altijd even `display.refresh()` aan,
+   zodat eventuele ruis op het scherm meteen wordt overschreven met het goede beeld!
 """
 
 import textwrap
@@ -37,36 +40,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 class Display:
     """
-    Aansturing van een SSD1306 OLED-display via SPI.
+    Klasse om eenvoudig tekst en het kluisscherm op het 128x64 OLED-display te zetten.
 
-    Aansluitingen:
-        OLED RST  -> GPIO 16
-        OLED DC   -> GPIO 6
-        OLED CLK  -> SPI SCLK
-        OLED DATA -> SPI MOSI
-        OLED CS   -> Niet aanwezig (permanent geselecteerd)
-
-    Schermresolutie:
-        128 x 64 pixels
-
-    Doel:
-        Verbergt de SSD1306-details achter eenvoudige methodes
-        (``toon_tekst``, ``toon_sensorwaarden``, ``toon_kluisscherm``,
-        ``toon_status``) en beheert de levenscyclus van de GPIO-pinnen.
-
-    Werking:
-        Elke ``toon_*``-methode maakt een nieuw 1-bit Pillow-beeld, tekent
-        daarop tekst/lijnen en stuurt het via ``oled.image()`` en
-        ``oled.show()`` naar het scherm.
-
-    Gedeelde state / threads:
-        Geen eigen locks en geen toegang tot ``VaultState``. De aanroeper moet
-        ``state.spi_lock`` nemen omdat de SPI-bus met de MCP3008 gedeeld wordt.
-        De vlag ``_closed`` maakt alle methodes na ``close()`` veilige no-ops,
-        zodat een late aanroep van een thread tijdens het afsluiten niet
-        crasht op vrijgegeven pinnen.
+    Aansluitingen op de Raspberry Pi:
+        - OLED RST (Reset)        -> GPIO 16
+        - OLED DC  (Data/Command) -> GPIO 6
+        - OLED CLK (Klok)         -> SPI SCLK (GPIO 11)
+        - OLED DATA               -> SPI MOSI (GPIO 10)
     """
 
+    # Het schermpje is 128 pixels breed en 64 pixels hoog
     WIDTH = 128
     HEIGHT = 64
 
@@ -76,34 +59,19 @@ class Display:
         dc_pin=board.D6,
         spi=None
     ):
-        """Initialiseert het OLED en wist het scherm.
-
-        Werking (stap voor stap):
-            1. Maak digitale uitgangen voor RST en DC (digitalio).
-            2. Kies de SPI-bus: de meegegeven gedeelde bus of anders
-               ``board.SPI()`` (hardware SPI0 van de Pi).
-            3. Maak het ``SSD1306_SPI``-object (128x64) aan zonder CS-pin.
-            4. Laad het standaard Pillow-lettertype en wis het scherm.
-
-        Parameters:
-            reset_pin: pin voor OLED RST (standaard ``board.D16``).
-            dc_pin: pin voor data/command (standaard ``board.D6``).
-            spi: optionele bestaande SPI-bus. main.py geeft ``sensors.spi``
-                mee zodat ADC en OLED dezelfde busobject delen; toegang
-                wordt daarbij met ``state.spi_lock`` geserialiseerd.
-
-        Retourwaarde: geen (constructor).
-
-        Gedeelde state: geen ``VaultState``; wel de gedeelde SPI-bus.
         """
-        # Besturingspinnen
+        Zet het OLED-schermpje klaar voor gebruik en maakt het scherm leeg (zwart).
+        Als `main.py` al een SPI-verbinding heeft gemaakt (van `sensors.py`),
+        geven we die mee via `spi`, zodat ze netjes dezelfde verbinding delen.
+        """
+        # Maak de twee stuurpinnen aan (Reset en Data/Command)
         self.oled_reset = digitalio.DigitalInOut(reset_pin)
         self.oled_dc = digitalio.DigitalInOut(dc_pin)
 
-        # Gedeelde SPI-bus (met de MCP3008) of de hardware SPI van de Pi
+        # Gebruik de gedeelde SPI-bus als die is meegegeven, of maak er anders zelf één aan
         self.spi = spi if spi is not None else board.SPI()
 
-        # SSD1306 initialiseren via SPI
+        # Start het SSD1306 OLED-scherm op via SPI (de laatste `None` betekent: geen CS-pin)
         self.oled = adafruit_ssd1306.SSD1306_SPI(
             self.WIDTH,
             self.HEIGHT,
@@ -113,24 +81,18 @@ class Display:
             None
         )
 
+        # Laad het standaard ingebouwde lettertype
         self.font = ImageFont.load_default()
+        # Houdt bij of het scherm bij het afsluiten al is uitgezet
         self._closed = False
 
+        # Begin met een helemaal leeg (zwart) scherm
         self.clear()
 
     def clear(self):
-        """Wis het volledige OLED-scherm.
-
-        Werking: vult de framebuffer met 0 (zwart) en stuurt die met
-        ``show()`` over SPI naar het scherm. Doet niets na ``close()``.
-
-        Parameters: geen.
-        Retourwaarde: geen.
-        Gedeelde state: schrijft naar de gedeelde SPI-bus; de aanroeper
-        hoort ``state.spi_lock`` vast te houden (behalve tijdens init/close
-        wanneer geen andere thread draait).
         """
-
+        Maakt het hele scherm zwart (`fill(0)`) en ververst de weergave (`show()`).
+        """
         if self._closed:
             return
 
@@ -138,50 +100,33 @@ class Display:
         self.oled.show()
 
     def refresh(self):
-        """Stuur de framebuffer opnieuw om SPI-ruis van de ADC te overschrijven."""
+        """
+        Stuurt het laatst getekende plaatje opnieuw naar het scherm.
+        Handig nadat de MCP3008 sensor-chip net over dezelfde SPI-kabel heeft gepraat!
+        """
         if not self._closed:
             self.oled.show()
 
     def toon_tekst(self, titel, tekst):
         """
-        Toon een titel en tekst op het OLED-display.
-
-        Werking (stap voor stap):
-            1. Maak een zwart 1-bit beeld van 128x64.
-            2. Teken de titel linksboven en een scheidingslijn op y=13.
-            3. Breek de tekst af op 20 tekens per regel (textwrap) en toon
-               maximaal 4 regels, 11 px onder elkaar vanaf y=18.
-            4. Stuur het beeld naar het scherm (``image()`` + ``show()``).
-
-        Parameters:
-            titel: titeltekst (wordt met ``str()`` omgezet).
-            tekst: bodytekst; langer dan 4 regels wordt afgekapt.
-
-        Retourwaarde: geen. Doet niets na ``close()``.
-
-        Gedeelde state: schrijft naar de SPI-bus; aanroeper houdt
-        ``state.spi_lock`` vast. Geen ``VaultState``.
-
-        Voorbeeld:
-            display.toon_tekst(
-                "SMART VAULT",
-                "Systeem gereed"
-            )
+        Toont een algemene titel bovenaan met een horizontale lijn eronder,
+        en daaronder maximaal 4 regels gewone tekst.
+        Lange zinnen worden met `textwrap.wrap` automatisch afgebroken op 20 tekens.
         """
-
         if self._closed:
             return
 
-        # Nieuw zwart beeld van 128 x 64 pixels
+        # 1. Maak een nieuw zwart-wit plaatje ("1" = 1-bit kleur: 0 is zwart, 255 is wit)
         image = Image.new(
             "1",
             (self.oled.width, self.oled.height),
             0
         )
 
+        # `draw` is ons virtuele "potlood" om op het plaatje te tekenen
         draw = ImageDraw.Draw(image)
 
-        # Titel
+        # 2. Schrijf de titel linksboven op coördinaat (x=2, y=1) in het wit (fill=255)
         draw.text(
             (2, 1),
             str(titel),
@@ -189,20 +134,20 @@ class Display:
             fill=255
         )
 
-        # Scheidingslijn
+        # 3. Teken een horizontale scheidingslijn onder de titel op hoogte y=13
         draw.line(
             (0, 13, self.oled.width - 1, 13),
             fill=255
         )
 
-        # Tekst afbreken over meerdere regels
+        # 4. Knip lange tekst op in stukjes van maximaal 20 letters per regel
         regels = textwrap.wrap(
             str(tekst),
             width=20
         )
 
+        # Teken maximaal 4 regels onder elkaar (telkens 11 pixels lager)
         y = 18
-
         for regel in regels[:4]:
             draw.text(
                 (2, y),
@@ -210,31 +155,17 @@ class Display:
                 font=self.font,
                 fill=255
             )
-
             y += 11
 
+        # 5. Stuur het kant-en-klare plaatje in één keer naar het OLED-scherm
         self.oled.image(image)
         self.oled.show()
 
     def toon_sensorwaarden(self, temperatuur, licht):
         """
-        Toon temperatuur en lichtsterkte.
-
-        Werking: tekent op een zwart beeld de titel "SMART VAULT", een
-        scheidingslijn, de temperatuur (1 decimaal), de lichtsterkte
-        (1 decimaal) en de vaste regel "Status: actief", en toont dit.
-        Bedoeld als eenvoudige teststand (gebruikt in de losse OLED-test).
-
-        Args:
-            temperatuur: temperatuur in graden Celsius
-            licht: lichtsterkte in lux
-
-        Retourwaarde: geen. Doet niets na ``close()``.
-
-        Gedeelde state: schrijft naar de SPI-bus; aanroeper houdt
-        ``state.spi_lock`` vast. Geen ``VaultState``.
+        Eenvoudig testschermpje dat alleen de temperatuur en lichtsterkte toont.
+        Wordt gebruikt als je `display.py` los test.
         """
-
         if self._closed:
             return
 
@@ -246,7 +177,7 @@ class Display:
 
         draw = ImageDraw.Draw(image)
 
-        # Titel
+        # Titel en scheidingslijn
         draw.text(
             (2, 1),
             "SMART VAULT",
@@ -259,7 +190,7 @@ class Display:
             fill=255
         )
 
-        # Sensorwaarden
+        # Toon temperatuur en licht met 1 cijfer achter de komma (`:.1f`)
         draw.text(
             (2, 21),
             f"Temp: {temperatuur:.1f} C",
@@ -300,78 +231,49 @@ class Display:
         wachttijd_s=0,
         afstand_cm=None
     ):
-        """Teken het kluisscherm voor de huidige modus (PIN, 2FA, open, alarm).
-
-        Doel:
-            Hoofdscherm van de kluis; wordt 10 Hz ververst door de
-            sensor-/OLED-thread in main.py.
-
-        Werking (stap voor stap):
-            1. Maak een nieuw 1-bit beeld.
-            2. Teken bovenaan een statusbalk: ``L:`` lux, ``T:`` temperatuur,
-               ``A:`` perimeterafstand (``--`` als de meting verouderd is, dus
-               ``afstand_cm`` None) en een ``!`` bij loitering, plus lijn y=12.
-            3. Kies op basis van ``mode`` de inhoud:
-               - PIN_INPUT + toon_fout: "FOUTE CODE!" en resterende pogingen.
-               - LOCKOUT: geblokkeerd met aftelling m:ss.
-               - PIN_INPUT: vergrendeld, PIN-slots (ingevoerde cijfers of
-                 ``_``) en het huidige draaicijfer.
-               - VOICE_2FA: Factor 1 OK en de uit te spreken passphrase.
-               - UNLOCKED: kluis geopend, knop om te sluiten.
-               - ALARM: kader, alarmreden (max 20 tekens) en resetinstructie.
-            4. Stuur het beeld naar het scherm.
-
-        Parameters:
-            mode (str): "PIN_INPUT", "VOICE_2FA", "UNLOCKED", "ALARM" of
-                "LOCKOUT" (zie ``vault_state.MODE_CODES``).
-            lux (float): lichtsterkte (BH1750), getoond als geheel getal.
-            temp_c (float): temperatuur in graden Celsius (LM35, mediaan).
-            digit (int): huidig met de potmeter gekozen cijfer 0-9.
-            pin_so_far (list[int]): reeds bevestigde cijfers (kopie).
-            loitering (bool): True als iemand dichtbij de kluis staat.
-            reason (str): reden van het alarm.
-            voice_passphrase (str): geheime zin, getoond in hoofdletters.
-            alarm_veilig (bool): True als temperatuur en licht weer normaal
-                zijn, zodat de reset zinvol is.
-            toon_fout (bool): toon "foute code"-melding na een foute PIN.
-            pogingen_over (int): resterende PIN-pogingen.
-            wachttijd_s (int): resterende lockout-tijd in seconden.
-            afstand_cm (float | None): perimeterafstand of None indien
-                verouderd/onbekend.
-
-        Retourwaarde: geen. Doet niets na ``close()``.
-
-        Gedeelde state / threads:
-            Leest zelf geen ``VaultState``; alle waarden zijn een snapshot die
-            main.py onder ``state.lock`` maakte. De aanroeper moet
-            ``state.spi_lock`` vasthouden (SPI0 gedeeld met de MCP3008).
-
-        Ontwerpkeuzes:
-            Tekenen in geheugen en slechts één ``show()`` per frame geeft een
-            rustig beeld; de snapshot-parameters houden de state-lock kort.
         """
+        HET HOOFDSCHERM VAN DE KLUIS (wordt 10x per seconde ververst vanuit `main.py`).
 
+        Wat tekent deze functie?
+        1. Bovenaan altijd de statusbalk:
+           Bijv. `L:12 T:21.5C A:85cm` (met een `!` erachter als iemand heel dichtbij staat).
+        2. Daaronder een scherm dat past bij de huidige `mode` (toestand) van de kluis:
+           - `PIN_INPUT` (met fout):  Toont "FOUTE CODE!" en hoeveel pogingen je nog hebt.
+           - `LOCKOUT`:               Toont "Geblokkeerd" met een aftoklokje (minuten:seconden).
+           - `PIN_INPUT` (normaal):   Toont de ingevoerde cijfers (bijv. `4  7  _`) en het draaicijfer.
+           - `VOICE_2FA`:             Vraagt de gebruiker om het geheime woord in de microfoon te zeggen.
+           - `UNLOCKED`:              Meldt dat de kluis open is!
+           - `ALARM`:                 Tekent een opvallend kader met de reden van het alarm (bijv. BRAND of BRAAK).
+        """
         if self._closed:
             return
 
+        # Maak weer een vers zwart plaatje in het geheugen
         image = Image.new("1", (self.oled.width, self.oled.height))
         draw = ImageDraw.Draw(image)
         font = self.font
 
+        # --- STAP 1: Bovenste statusbalk tekenen ---
         top_bar = f"L:{int(lux)} T:{temp_c:.1f}C "
+        # Als we een recente afstandsmeting hebben van de Pico, toon die in cm (anders "--")
         top_bar += f"A:{afstand_cm:.0f}cm" if afstand_cm is not None else "A:--cm"
+        # Staat er iemand binnen 40 cm? Zet er een uitroepteken achter!
         if loitering:
             top_bar += "!"
         draw.text((2, 0), top_bar, font=font, fill=255)
         draw.line((0, 12, 127, 12), fill=255)
 
+        # --- STAP 2: Kies het juiste scherm op basis van de modus (`mode`) ---
         if mode == "PIN_INPUT" and toon_fout:
+            # Iemand heeft net een foute pincode ingevoerd (wordt 5 seconden getoond)
             draw.text((2, 20), "FOUTE CODE!", font=font, fill=255)
             draw.text((2, 36), f"Nog {pogingen_over} pogingen over", font=font, fill=255)
 
         elif mode == "LOCKOUT":
+            # 3x een foute code ingevoerd: kluis is tijdelijk geblokkeerd met aftelklok
             draw.text((2, 18), "FOUTE CODE!", font=font, fill=255)
             draw.text((2, 32), "Geblokkeerd, wacht:", font=font, fill=255)
+            # Reken seconden om naar minuten:seconden (bijv. 0:09)
             draw.text(
                 (2, 46),
                 f"{wachttijd_s // 60}:{wachttijd_s % 60:02d}",
@@ -380,6 +282,7 @@ class Display:
             )
 
         elif mode == "PIN_INPUT":
+            # Normaal startscherm: toon de 3 plekken voor de pincode (ingevuld cijfer of `_`)
             draw.text((2, 16), "STATUS: VERGRENDELD", font=font, fill=255)
             slots = [
                 str(pin_so_far[i]) if i < len(pin_so_far) else "_"
@@ -389,60 +292,44 @@ class Display:
             draw.text((2, 46), f"Draai: [ {digit} ] (Druk=OK)", font=font, fill=255)
 
         elif mode == "VOICE_2FA":
+            # Stap 1 (Pincode) is gelukt! Nu vragen we om het gesproken wachtwoord (Stap 2)
             draw.text((2, 18), "FACTOR 1 (PIN): OK!", font=font, fill=255)
             draw.text((2, 34), "SPREEK WACHTWOORD IN:", font=font, fill=255)
             draw.text((2, 48), f'"{voice_passphrase.upper()}"', font=font, fill=255)
 
         elif mode == "UNLOCKED":
+            # De kluis is open!
             draw.text((10, 22), "** KLUIS GEOPEND **", font=font, fill=255)
             draw.text((4, 42), "Druk knop om te sluiten", font=font, fill=255)
 
         elif mode == "ALARM":
+            # Alarm! Teken een witte rechthoek (`rectangle`) rondom de alarmmelding
             draw.rectangle((0, 14, 127, 63), outline=255, fill=0)
             draw.text((14, 16), "!!! ALARM ACTIEF !!!", font=font, fill=255)
             draw.text((6, 30), reason[:20], font=font, fill=255)
+            # Geef aan of de temperatuur en het licht weer veilig zijn om te resetten
             if alarm_veilig:
                 draw.text((6, 46), "Veilig -> Druk=Reset", font=font, fill=255)
             else:
                 draw.text((6, 46), "Druk knop voor Reset", font=font, fill=255)
 
+        # --- STAP 3: Stuur het getekende plaatje naar het OLED-scherm ---
         self.oled.image(image)
         self.oled.show()
 
     def toon_status(self, status):
-        """Toon een Smart Vault-statusbericht.
-
-        Werking: roept ``toon_tekst`` aan met de vaste titel "SMART VAULT".
-
-        Parameters:
-            status: statustekst (wordt afgebroken op 20 tekens per regel).
-
-        Retourwaarde: geen.
-        Gedeelde state: zie ``toon_tekst`` (``state.spi_lock`` door aanroeper).
         """
-
+        Korte hulpfunctie om snel een statusbericht onder de titel "SMART VAULT" te tonen.
+        """
         self.toon_tekst(
             "SMART VAULT",
             status
         )
 
     def close(self):
-        """Wis het scherm en geef de GPIO-resources vrij.
-
-        Werking (stap voor stap):
-            1. Doe niets als al gesloten (idempotent).
-            2. Wis het scherm via ``clear()``.
-            3. ``deinit()`` van DC- en RST-pinnen zodat de GPIO's weer
-               vrij zijn voor een volgende start.
-            4. Zet ``_closed`` zodat latere ``toon_*``-aanroepen no-ops zijn.
-
-        Parameters: geen.
-        Retourwaarde: geen.
-        Gedeelde state: wordt door main.py in de ``finally`` van ``main()``
-        aangeroepen nadat de threads zijn gestopt; de gedeelde SPI-bus zelf
-        wordt hier niet gesloten (die is eigendom van ``sensors.py``).
         """
-
+        Maakt het scherm zwart en geeft de GPIO-pinnen netjes vrij bij het afsluiten.
+        """
         if self._closed:
             return
 
@@ -456,7 +343,9 @@ class Display:
         print("OLED-display afgesloten.")
 
 
-# Hiermee kan display.py ook afzonderlijk worden getest
+# ==============================================================================
+# LOSSE TEST: Wordt alleen uitgevoerd als je `python3 display.py` typt
+# ==============================================================================
 if __name__ == "__main__":
     import time
 

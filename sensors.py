@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 """
-Sensorlaag van de Smart Vault (Raspberry Pi 5).
+================================================================================
+BESTAND: sensors.py
+DOEL:    Uitlezen van alle sensoren op de kluis (Licht, Temperatuur, Draaiknop).
+================================================================================
 
-Rol van dit bestand:
-    Bundelt alle analoge en digitale sensoren in één klasse, ``Sensors``,
-    zodat de rest van de applicatie (main.py) alleen nog Python-waarden
-    krijgt: temperatuur in °C, licht in lux en een ruwe potmeterwaarde.
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+In dit bestand lezen we drie verschillende sensoren uit:
+1. BH1750 Lichtsensor (Digitaal, via de I2C-bus op GPIO 2 en 3):
+   Meet hoeveel licht (in lux) er in de kluis valt. Als de kluis op slot zit
+   en er valt plots licht naar binnen, weten we dat de kluis wordt opengebroken!
+2. Potmeter / Draaiknop (Analoog, op kanaal 0 van de MCP3008-chip):
+   Hiermee draait de gebruiker naar het juiste cijfer (0 t/m 9) van de pincode.
+3. LM35 Temperatuursensor (Analoog, op kanaal 1 van de MCP3008-chip):
+   Meet de temperatuur in graden Celsius om brand te detecteren.
 
-Hardware en bibliotheken:
-    * BH1750 lichtsensor via I2C (``busio.I2C``) op GPIO 2 (SDA) / GPIO 3 (SCL).
-    * MCP3008 10-bit ADC via SPI0 (``busio.SPI`` + ``adafruit_mcp3xxx``),
-      omdat de Raspberry Pi zelf geen analoge ingangen heeft. Kanaal 0 is de
-      potmeter (cijferslot), kanaal 1 de LM35 temperatuursensor.
-    * ``digitalio`` voor de chip-select (CS) van de MCP3008 op GPIO 25.
-
-Threads en gedeelde toestand:
-    Deze module kent zelf geen threads of locks. De SPI-bus wordt ook door het
-    OLED-display gebruikt; de aanroeper (main.py) moet daarom ``spi_lock`` uit
-    ``VaultState`` nemen rond lees_temperatuur() en lees_potmeter_raw().
-    De I2C-bus wordt intern beschermd met ``try_lock()``/``unlock()``.
+💡 BELANGRIJKE VRAAG OP JE VERDEDIGING (Waarom een MCP3008 chip?):
+Een Raspberry Pi heeft alleen DIGITALE pinnen (die kennen alleen 0 of 1, aan of uit).
+Maar een draaiknop (potmeter) en een LM35 temperatuursensor geven een ANALOGE
+spanning af (bijv. 0,22 Volt of 1,65 Volt). Daarom gebruiken we de MCP3008:
+dat is een ADC (Analoog-naar-Digitaal Converter). Die chip meet de analoge
+spanning en stuurt die via de SPI-bus als een digitaal getal naar de Raspberry Pi!
 """
 
 import time
@@ -32,96 +35,54 @@ from adafruit_mcp3xxx.analog_in import AnalogIn
 
 class Sensors:
     """
-    Sensoren van de Smart Vault.
-
-    Aansluitingen:
-        BH1750 (I2C 0x23)  -> GPIO 2 (SDA), GPIO 3 (SCL)
-        MCP3008 (SPI0)     -> CS op GPIO 25
-            CH0: potmeter (cijferslot)
-            CH1: LM35 temperatuursensor
-
-    Doel:
-        Eén toegangspunt tot alle sensoren, zodat de rest van het systeem niet
-        hoeft te weten welke bus of welk ADC-kanaal bij welke meting hoort.
-
-    Werking:
-        De constructor opent de I2C- en SPI-bus, zet de BH1750 in continue
-        meetmodus en maakt twee ADC-kanalen aan. De lees_*-methoden geven
-        daarna direct een actuele meetwaarde terug.
-
-    Threads/locks:
-        De klasse is zelf niet thread-safe voor SPI: de aanroeper houdt
-        ``VaultState.spi_lock`` vast omdat het OLED dezelfde SPI-bus deelt.
-        Voor I2C gebruikt de klasse ``try_lock()``.
-
-    Ontwerpkeuzes:
-        * BH1750 draait in continue modus: de sensor meet zelf door (~120 ms
-          per meting), dus uitlezen is een snelle read zonder wachttijd of
-          opnieuw triggeren per meting.
-        * Bij een bezette I2C-bus wordt de laatste lux-waarde teruggegeven in
-          plaats van te blokkeren, zodat de meetlus (10 Hz) niet vertraagt.
+    Bundelt alle sensoren in één handige klasse, zodat `main.py` gewoon
+    `lees_temperatuur()`, `lees_licht()` en `lees_potmeter_raw()` kan aanroepen.
     """
 
+    # Het vaste adres van de BH1750 lichtsensor op de I2C-kabel is 0x23 (hexadecimaal).
     BH1750_ADDRESS = 0x23
+    # Commando 0x10 vertelt de BH1750: "Blijf continu meten met hoge nauwkeurigheid (1 lux)".
     BH1750_COMMAND_HIGH_RES = bytearray([0x10])
 
     def __init__(self):
         """
-        Initialiseert alle sensoren en start de continue BH1750-meting.
-
-        Werking, stap voor stap:
-            1. Open de I2C-bus (SCL=GPIO 3, SDA=GPIO 2) en zet de laatste
-               luxwaarde op 0.0 (fallback als de bus bezet is).
-            2. Pak de I2C-lock (wacht in stappen van 10 ms), stuur commando
-               0x10 (continuous high-resolution mode) naar adres 0x23 en
-               geef de lock altijd vrij (try/finally).
-            3. Wacht 0.2 s zodat de eerste meting (~120 ms) klaar is.
-            4. Open SPI0 (SCK/MISO/MOSI) en maak de chip-select op GPIO 25.
-            5. Maak de MCP3008 en twee ``AnalogIn``-kanalen: P0 (potmeter)
-               en P1 (LM35).
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None. Zet de attributen i2c, laatste_lux, spi, cs, mcp,
-            potmeter_channel en lm35_channel.
-
-        Threads/locks:
-            Wordt eenmalig bij het opstarten aangeroepen, vóór de threads
-            starten; de I2C-lock wordt kort en tijdelijk genomen.
-
-        Hardware/bibliotheken:
-            busio (I2C/SPI), digitalio (CS-pin) en adafruit_mcp3xxx voor de
-            ADC, omdat de Pi geen analoge ingang heeft.
-
-        Ontwerpkeuzes:
-            High-res continue modus geeft 1 lx resolutie zonder per meting een
-            commando te hoeven sturen.
+        Zet de communicatiekabels (I2C en SPI) open en bereidt de sensoren voor.
         """
-        # I2C bus voor de BH1750 lichtsensor
+        # --- 1. I2C-bus klaarmaken voor de BH1750 Lichtsensor ---
+        # I2C gebruikt maar 2 draadjes: een kloklijn (SCL op GPIO 3) en een datalijn (SDA op GPIO 2).
         self.i2c = busio.I2C(board.D3, board.D2)
+        # Bewaart de laatst gemeten lichtwaarde
         self.laatste_lux = 0.0
 
-        # Start continue meting (high-res, ~120 ms per meting)
+        # We reserveren heel even de I2C-lijn (`try_lock`), sturen het startcommando
+        # naar de BH1750, en geven de lijn in `finally` altijd weer netjes vrij (`unlock`).
         while not self.i2c.try_lock():
             time.sleep(0.01)
         try:
             self.i2c.writeto(self.BH1750_ADDRESS, self.BH1750_COMMAND_HIGH_RES)
         finally:
             self.i2c.unlock()
+
+        # Geef de lichtsensor 0,2 seconde de tijd om zijn allereerste meting af te ronden.
         time.sleep(0.2)
 
-        # SPI0 bus, wordt ook door het OLED-display gebruikt
+        # --- 2. SPI-bus klaarmaken voor de MCP3008 (ADC-chip) ---
+        # Let op: ook het OLED-scherm gebruikt deze SPI-bus! Daarom geeft `main.py`
+        # deze `self.spi` straks ook door aan het Display-object.
         self.spi = busio.SPI(
             clock=board.SCK,
             MISO=board.MISO,
             MOSI=board.MOSI
         )
 
+        # CS = Chip Select (op GPIO 25). Hiermee zegt de Raspberry Pi tegen de MCP3008:
+        # "Ik praat nu tegen jou!"
         self.cs = digitalio.DigitalInOut(board.D25)
         self.mcp = MCP.MCP3008(self.spi, self.cs)
 
+        # Sluit de analoge kanalen aan:
+        # Kanaal P0 = Potmeter (draaiknop voor pincode)
+        # Kanaal P1 = LM35 (temperatuursensor)
         self.potmeter_channel = AnalogIn(self.mcp, MCP.P0)
         self.lm35_channel = AnalogIn(self.mcp, MCP.P1)
 
@@ -129,144 +90,63 @@ class Sensors:
 
     def lees_temperatuur(self):
         """
-        Lees de LM35 uit (10 mV per graad Celsius).
+        Leest de LM35 temperatuursensor uit en geeft de temperatuur in °C terug.
 
-        Doel:
-            Geeft de omgevingstemperatuur voor de brandalarm-detectie.
-
-        Werking, stap voor stap:
-            1. Lees de spanning van ADC-kanaal 1 (in volt, door de
-               bibliotheek omgerekend uit de 10-bit ADC-waarde).
-            2. Reken om naar millivolt (x 1000).
-            3. Deel door 10: de LM35 levert 10 mV per graad Celsius.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            float: temperatuur in graden Celsius
-
-        Threads/locks:
-            Leest de gedeelde SPI-bus; de aanroeper moet ``spi_lock`` nemen
-            omdat het OLED dezelfde bus gebruikt. Raakt zelf geen state.
-
-        Hardware/bibliotheken:
-            LM35 via MCP3008 kanaal 1 (``AnalogIn``); de LM35 is analoog en
-            de Pi heeft geen ADC.
-
-        Opmerking:
-            Deze methode doet één enkele lezing. Het uitmiddelen (mediaan van
-            5 lezingen om ruis en uitschieters te onderdrukken) gebeurt bij de
-            aanroeper in main.py, niet hier.
+        💡 HOE WERKT DE FORMULE? (Goed om te weten voor je presentatie!)
+        De LM35 is heel makkelijk: per graad Celsius geeft hij precies 10 millivolt (mV) af.
+        Dus:
+        - 20 °C = 200 mV (0,20 Volt)
+        - 25 °C = 250 mV (0,25 Volt)
+        We vermenigvuldigen het aantal Volt met 1000 (om van Volt naar millivolt te gaan)
+        en delen daarna door 10 om het aantal graden Celsius te krijgen!
         """
-
         voltage_mv = self.lm35_channel.voltage * 1000.0
 
         return voltage_mv / 10.0
 
     def lees_licht(self):
         """
-        Lees de BH1750 lichtsensor uit.
+        Leest de lichtsterkte (in lux) uit de BH1750 sensor via I2C.
 
-        Doel:
-            Geeft de lichtsterkte voor de sabotagedetectie (plotseling veel
-            licht = kluis geopend/belicht).
-
-        Werking, stap voor stap:
-            1. Maak een buffer van 2 bytes.
-            2. Probeer de I2C-lock te pakken. Lukt dat niet, dan wordt direct
-               de laatst bekende waarde teruggegeven (geen blokkade).
-            3. Lees 2 bytes van adres 0x23; de sensor meet continu zelf.
-            4. Geef de lock vrij (try/finally).
-            5. Combineer de bytes tot een 16-bit getal (hoog << 8 | laag) en
-               deel door 1.2 (datasheet-omrekenfactor naar lux).
-            6. Bewaar het resultaat in ``laatste_lux`` en geef het terug.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            float: lichtwaarde in lux
-
-        Threads/locks:
-            Gebruikt de I2C ``try_lock()``; schrijft ``self.laatste_lux``.
-            Niet afhankelijk van ``spi_lock``.
-
-        Hardware/bibliotheken:
-            BH1750 via busio.I2C.
-
-        Ontwerpkeuzes:
-            Continue modus: geen trigger of wachttijd per meting nodig.
-            ``try_lock`` met fallback voorkomt dat de 10 Hz-lus blokkeert.
+        Hoe werkt het?
+        De sensor stuurt 2 losse bytes terug (samen een 16-bit getal).
+        Met `(result[0] << 8) | result[1]` plakken we die twee bytes aan elkaar tot één getal,
+        en volgens de handleiding (datasheet) van de BH1750 moet je dat getal delen door 1.2
+        om de echte waarde in lux te krijgen.
         """
-
         result = bytearray(2)
 
+        # Is de I2C-lijn heel even bezet? Geen probleem, geef gewoon de vorige waarde terug
+        # zodat het programma nooit hoeft te wachten.
         if not self.i2c.try_lock():
             return self.laatste_lux
 
         try:
-            # Continuous mode: de sensor meet zelf door, dus alleen uitlezen
+            # Lees de 2 bytes met de nieuwste lichtmeting uit de sensor
             self.i2c.readfrom_into(self.BH1750_ADDRESS, result)
         finally:
             self.i2c.unlock()
 
+        # Plak de twee bytes aan elkaar en deel door 1.2 (formule uit de datasheet)
         self.laatste_lux = ((result[0] << 8) | result[1]) / 1.2
         return self.laatste_lux
 
     def lees_potmeter_raw(self):
         """
-        Lees de potmeter uit.
+        Leest de stand van de draaiknop (potmeter) uit als een getal van 0 t/m 1023.
 
-        Doel:
-            Levert de draaistand van het cijferslot als ruwe waarde.
-
-        Werking, stap voor stap:
-            1. Lees de 16-bit schaalwaarde van ADC-kanaal 0 (de bibliotheek
-               schaalt de 10-bit MCP3008-waarde op naar 0..65535).
-            2. Schuif 6 bits naar rechts (``>> 6``) om terug te gaan naar de
-               oorspronkelijke 10-bit resolutie 0..1023.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            int: ruwe waarde van 0 t/m 1023 (10-bit)
-
-        Threads/locks:
-            Leest de gedeelde SPI-bus; de aanroeper neemt ``spi_lock``.
-
-        Hardware/bibliotheken:
-            Potmeter via MCP3008 kanaal 0.
-
-        Ontwerpkeuzes:
-            De mapping naar een cijfer 0-9 en de hysterese
-            (``HYSTERESIS_10BIT``) gebeuren bij de aanroeper; hier blijft de
-            waarde ruw zodat die logica op één plek staat.
+        💡 WAAROM STAAT ER `>> 6`?
+        De MCP3008 is een 10-bit chip (geeft getallen van 0 t/m 1023).
+        Maar de Adafruit-bibliotheek trekt dat getal standaard omhoog naar 16-bit (0 t/m 65535).
+        Door 6 bits naar rechts te schuiven (`>> 6`, oftewel delen door 64) krijgen we
+        weer netjes het originele 10-bit getal van 0 t/m 1023 terug!
         """
-
         return self.potmeter_channel.value >> 6
 
     def lees_alles(self):
         """
-        Lees alle sensoren in één keer uit.
-
-        Werking:
-            Roept lees_temperatuur(), lees_licht() en lees_potmeter_raw()
-            achter elkaar aan en bundelt de uitkomsten.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            dict: {"temperatuur": float (°C), "licht": float (lux),
-            "potmeter": int (0..1023)}
-
-        Threads/locks:
-            Raakt de SPI- en I2C-bus; de aanroeper moet ``spi_lock`` nemen.
-
-        Hardware/bibliotheken:
-            LM35 + potmeter (MCP3008/SPI) en BH1750 (I2C).
+        Hulpfunctie om in één keer alle drie de sensoren uit te lezen en als
+        woordenboekje (dictionary) terug te geven.
         """
         return {
             "temperatuur": self.lees_temperatuur(),
@@ -276,24 +156,7 @@ class Sensors:
 
     def close(self):
         """
-        Geef de chip-select-pin van de MCP3008 vrij bij afsluiten.
-
-        Werking:
-            Roept ``deinit()`` aan op de digitalio-pin (GPIO 25) zodat de pin
-            niet vergrendeld blijft voor een volgende start.
-
-        Parameters:
-            Geen.
-
-        Returns:
-            None
-
-        Threads/locks:
-            Aanroepen nadat de threads zijn gestopt; neemt geen locks.
-
-        Hardware/bibliotheken:
-            digitalio (CS op GPIO 25). De I2C/SPI-bussen blijven open tot het
-            proces eindigt.
+        Geeft de Chip-Select pin (GPIO 25) weer netjes vrij bij het afsluiten.
         """
         self.cs.deinit()
         print("Sensors afgesloten")

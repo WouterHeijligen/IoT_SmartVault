@@ -1,48 +1,43 @@
 #!/usr/bin/env python3
 """
-SMART VAULT CONTROLLER (v1.3) - Raspberry Pi 5
-Thomas More Geel - IoT Essentials Groepsproject
-Architectuur: Multithreaded State Machine met SPI0 (MCP3008 + SSD1306 OLED),
-              I2C (BH1750), Active-Low Relais Motor-Interlock,
-              28BYJ-48 Full-Step Pusher, RGB LED & MQTT.
+================================================================================
+BESTAND: main.py
+DOEL:    Het hoofdprogramma ("het brein") van de Smart Vault op de Raspberry Pi 5.
+         Thomas More Geel - IoT Essentials Groepsproject
+================================================================================
 
-Modules:
-    vault_state.py  -> configuratie en gedeelde status
-    sensors.py      -> potmeter, LM35, BH1750
-    display.py      -> SSD1306 OLED
-    vault_lock.py   -> relais + stappenmotor
-    zwaailicht.py   -> RGB LED
-    mqtt_client.py  -> ThingSpeak telemetrie + lokale perimeter-subscriber
-    notificaties.py -> ntfy push + sirene
-    voice.py        -> spraakherkenning (Factor 2)
+UITLEG VOOR JE VERDEDIGING (IoT Essentials):
+--------------------------------------------
+`main.py` is de dirigent van het hele project. Hij importeert al onze andere
+Python-bestanden en laat ze samenwerken:
+- `vault_state.py`  -> Alle instellingen en het gedeelde notitiebord (`state`)
+- `sensors.py`      -> Draaiknop (potmeter), temperatuursensor (LM35) en lichtsensor (BH1750)
+- `display.py`      -> Het OLED-schermpje (128x64 pixels)
+- `vault_lock.py`   -> Het fysieke slot (Relais + Stappenmotor)
+- `zwaailicht.py`   -> De RGB-LED (blauw, oranje, groen, rood knipperend)
+- `mqtt_client.py`  -> Sturen naar ThingSpeak (cloud) + ontvangen van de Pico 2 W (afstand)
+- `notificaties.py` -> Pushberichten naar je smartphone (`ntfy.sh`) + Bluetooth-sirene
+- `voice.py`        -> Offline spraakherkenning voor stap 2 van de beveiliging (Vosk)
 
-Rol van dit bestand in de architectuur
---------------------------------------
-main.py is het centrale opstartpunt en de "orchestrator". Het bestand:
+💡 DE TWEE BELANGRIJKSTE CONCEPTEN VOOR JE PRESENTATIE:
+1. "Wat is een State Machine (Toestandsmachine)?"
+   De kluis bevindt zich altijd in precies één duidelijke toestand (`state.mode`):
+   - `PIN_INPUT`: Kluis zit op slot en wacht op de 3-cijferige pincode (Factor 1).
+   - `VOICE_2FA`: Pincode was juist! Wacht nu op het gesproken wachtwoord (Factor 2).
+   - `UNLOCKED`:  Beide factoren kloppen -> de stappenmotor draait het slot open!
+   - `LOCKOUT`:   3x een foute pincode ingevoerd -> je moet even wachten (met aftelklok).
+   - `ALARM`:     Brand, inbraak (licht in gesloten kluis) of iemand blijft verdacht
+                  lang voor de kluis hangen (loitering) -> Sirene + Pushbericht + Rood licht!
 
-1. Maakt op moduleniveau één gedeeld ``VaultState``-object (``state``) en alle
-   hardware-/service-objecten aan (knop, zwaailicht, sensoren, kluisslot,
-   display, spraak, notificaties, MQTT).
-2. Definieert vijf worker-threads die elk één verantwoordelijkheid hebben:
-   knop (50 Hz), sensoren + OLED (10 Hz), actuatoren (~33 Hz), cloud (2 Hz,
-   telemetrie elke 15 s) en spraakherkenning (Factor 2).
-3. Bevat de state machine-logica: modi PIN_INPUT -> VOICE_2FA -> UNLOCKED,
-   plus ALARM en LOCKOUT. De modus staat in ``state.mode``.
-4. Start alles in ``main()`` en ruimt bij afsluiten netjes de hardware op.
-
-Threading-model en locks
-------------------------
-- ``state.lock``     beschermt alle velden van ``VaultState`` (mode, pin,
-                     sensorwaarden, vlaggen). Houd deze lock KORT: nooit tijdens
-                     trage I/O (motor, netwerk, SPI, spraak).
-- ``state.spi_lock`` serialiseert toegang tot de gedeelde SPI0-bus (MCP3008-ADC
-                     en SSD1306-OLED gebruiken dezelfde bus). Wordt nooit
-                     tegelijk met ``state.lock`` vastgehouden om deadlocks te
-                     vermijden.
-- Eenmalige acties (motor open/dicht, push, sirene) worden met vlaggen in de
-  state ("unlock_executed", "alarm_notified", ...) aangevraagd onder de lock en
-  daarna buiten de lock uitgevoerd, zodat ze precies één keer gebeuren.
-- Alle threads zijn daemon-threads en stoppen zodra ``state.running`` False is.
+2. "Waarom gebruiken we 5 Threads (achtergrondtaken)?"
+   Als we maar 1 gewone `while`-lus zouden hebben, zou het hele scherm en de drukknop
+   30 seconden lang bevriezen terwijl de stappenmotor draait of terwijl de microfoon luistert!
+   Door het werk te verdelen over 5 losse threads, blijft alles altijd soepel reageren:
+   - Thread 1 (`thread_button`):              Controleert 50x per seconde de drukknop.
+   - Thread 2 (`thread_sensors_and_display`): Leest 10x per seconde de sensoren en tekent het OLED-scherm.
+   - Thread 3 (`thread_actuators`):           Stuurt de RGB-LED, stappenmotor en sirene aan.
+   - Thread 4 (`thread_cloud`):               Stuurt pushmeldingen en elke 15s data naar ThingSpeak.
+   - Thread 5 (`thread_voice`):               Luistert naar het spraakwachtwoord zodra de pincode klopt.
 """
 
 import threading
@@ -78,19 +73,32 @@ from vault_state import (
     MODE_CODES,
 )
 
+# ==============================================================================
+# OPSTARTEN VAN ALLE ONDERDELEN (Objecten aanmaken)
+# ==============================================================================
+
+# 1. Maak het centrale "notitiebord" aan waarin alle threads hun gegevens delen
 state = VaultState()
 
+# 2. Zet de fysieke drukknop op GPIO 4 klaar.
+# We gebruiken een interne Pull-Up weerstand (`Pull.UP`):
+# - Knop NIET ingedrukt = True (3.3V)
+# - Knop WEL ingedrukt  = False (0V, verbonden met GND)
 button = digitalio.DigitalInOut(board.D4)
 button.switch_to_input(pull=digitalio.Pull.UP)
 
+# 3. Maak alle hardware- en hulpmiddelen aan
 licht = Zwaailicht()
 sensors = Sensors()
 vault = VaultLock()
+# Geef de SPI-kabel van de sensoren door aan het OLED-scherm (ze delen dezelfde SPI-bus)
 display = Display(spi=sensors.spi)
 voice = VoiceRecognition()
 notificaties = Notificaties()
+# Start de achtergrondcontrole die de Bluetooth-speaker verbonden houdt
 notificaties.start_speaker_verbinding()
 
+# 4. Probeer de ThingSpeak MQTT-client klaar te zetten (werkt ook als `.env` nog niet is ingevuld)
 try:
     mqtt = MQTTClient()
 except RuntimeError as e:
@@ -99,65 +107,47 @@ except RuntimeError as e:
 
 
 # ==============================================================================
-# THREAD 1: DRUKKNOP (50 Hz)
+# THREAD 1: DRUKKNOP & PINCODE-LOGICA (Controleert 50x per seconde)
 # ==============================================================================
 def thread_button():
-    """Thread 1: verwerkt op 50 Hz de bevestigingsknop (GPIO 4) en de PIN-logica.
+    """
+    Deze achtergrondtaak let op de drukknop (op GPIO 4) en controleert de pincode.
 
-    Doel:
-        Elke druk op de knop bevestigt het cijfer dat via de potmeter is
-        gekozen (Factor 1) of stuurt de kluis terug naar de vergrendelde modus.
-
-    Werking (stap voor stap):
-        1. Lees ``not button.value`` (digitalio, pull-up: laag = ingedrukt).
-        2. Flankdetectie: alleen de overgang losgelaten -> ingedrukt telt, zodat
-           vasthouden niet meerdere cijfers invoert.
-        3. Onder ``state.lock`` wordt afhankelijk van ``state.mode`` gehandeld:
-           - PIN_INPUT: voeg ``current_digit`` toe aan ``entered_pin``. Bij 3
-             cijfers: vergelijk met SECRET_PIN. Goed -> ``failed_attempts`` = 0
-             en modus VOICE_2FA (of direct UNLOCKED bij BYPASS_VOICE_2FA).
-             Fout -> teller +1, pin leeg, ``wrong_pin_until`` zet de
-             "foute code"-weergave/zwaailicht aan; bij MAX_PIN_ATTEMPTS volgt
-             modus LOCKOUT met ``lockout_until`` en de vlaggen voor push en
-             sirene.
-           - LOCKOUT: invoer wordt genegeerd.
-           - UNLOCKED/ALARM: reset naar PIN_INPUT; bij UNLOCKED wordt
-             ``lock_executed`` False gezet zodat de motor de kluis weer sluit.
-        4. ``time.sleep(0.25)`` na een druk is de software-debounce; daarna
-           ``time.sleep(0.02)`` per lus geeft de 50 Hz polling.
-
-    Parameters: geen.
-    Retourwaarde: geen (loopt tot ``state.running`` False wordt).
-
-    Gedeelde state / threads:
-        Schrijft last_activity, entered_pin, failed_attempts, mode,
-        wrong_pin_until, lockout_*, alarm_*, unlock_executed, lock_executed
-        onder ``state.lock``. Wordt gelezen door de sensor-, actuator- en
-        cloud-thread. Geen SPI-gebruik.
-
-    Hardware/bibliotheek:
-        digitalio.DigitalInOut met interne pull-up (knop schakelt naar GND).
-
-    Ontwerpkeuzes:
-        De debounce-sleep gebeurt buiten de lock zodat andere threads niet
-        worden geblokkeerd. Fouten worden afgevangen zodat de thread blijft
-        draaien.
+    Wat gebeurt er als je op de knop drukt?
+    - In modus `PIN_INPUT`:
+      Het cijfer waar de draaiknop nu op staat (`state.current_digit`) wordt toegevoegd
+      aan je ingevoerde pincode (`state.entered_pin`).
+      Heb je 3 cijfers ingevoerd? Dan vergelijken we die met `SECRET_PIN`:
+      * GOED -> We gaan door naar stap 2 (`VOICE_2FA`, of direct `UNLOCKED` als bypass aan staat).
+      * FOUT -> Je krijgt een foutmelding. Na 3 fouten gaat de kluis in `LOCKOUT` (wachttijd)
+                en sturen we een pushbericht + sirene!
+    - In modus `UNLOCKED` of `ALARM`:
+      Een druk op de knop sluit de kluis weer (of reset het alarm) terug naar `PIN_INPUT`.
     """
     last_pressed = False
 
     while state.running:
         try:
+            # Omdat de knop een Pull-Up weerstand heeft, betekent `not button.value` dat hij ingedrukt is!
             pressed = not button.value
 
+            # Flankdetectie (`pressed and not last_pressed`):
+            # We reageren alleen op het moment dat je de knop INDRUKT. Als je de knop
+            # ingedrukt houdt, telt dat dus maar als 1 druk (en niet 50 drukken per seconde!).
             if pressed and not last_pressed:
                 with state.lock:
+                    # Onthoud dat de gebruiker net actief is geweest (zodat het loiter-alarm niet afgaat)
                     state.last_activity = time.monotonic()
+
+                    # --- SITUATIE A: Gebruiker is de pincode aan het invoeren ---
                     if state.mode == "PIN_INPUT":
                         state.entered_pin.append(state.current_digit)
                         print(f"[CIJFERSLOT] Cijfer bevestigd: {state.current_digit} -> Invoer: {state.entered_pin}")
 
+                        # Zijn er nu 3 cijfers ingevoerd? Controleer dan of de code klopt!
                         if len(state.entered_pin) == 3:
                             if state.entered_pin == SECRET_PIN:
+                                # Pincode is JUIST!
                                 state.failed_attempts = 0
                                 if BYPASS_VOICE_2FA:
                                     print("[AUTH] Pincode correct! (Voice 2FA bypass actief -> UNLOCKED)")
@@ -167,24 +157,30 @@ def thread_button():
                                     print("[AUTH] Factor 1 (PIN) correct! Wachten op Factor 2 (Vosk Spraak)...")
                                     state.mode = "VOICE_2FA"
                             else:
+                                # Pincode is FOUT!
                                 state.failed_attempts += 1
+                                # Maak de ingevoerde cijfers weer leeg
                                 state.entered_pin = []
                                 state.wrong_pin_until = time.monotonic() + WRONG_PIN_BLINK_S
                                 retries_left = MAX_PIN_ATTEMPTS - state.failed_attempts
                                 if retries_left > 0:
                                     print(f"[AUTH] Foute code! Nog {retries_left} pogingen over.")
                                 else:
+                                    # 3x fout -> Blokkering (LOCKOUT) + Pushbericht + Sirene!
                                     print(f"[AUTH] Foute code! Geen pogingen meer. Wacht {PIN_LOCKOUT_S // 60} minuten.")
                                     state.mode = "LOCKOUT"
                                     state.lockout_until = time.monotonic() + PIN_LOCKOUT_S
                                     state.lockout_push_pending = True
                                     state.lockout_siren_pending = True
 
+                    # --- SITUATIE B: Kluis is tijdelijk geblokkeerd na 3 fouten ---
                     elif state.mode == "LOCKOUT":
                         print("[AUTH] Wachtperiode actief, invoer geblokkeerd.")
 
+                    # --- SITUATIE C: Kluis is open of in alarm -> knop drukken = sluiten / resetten ---
                     elif state.mode in ("UNLOCKED", "ALARM"):
                         if state.mode == "UNLOCKED":
+                            # Zorg dat de motor-thread weet dat het slot weer dichtgedraaid moet worden
                             state.lock_executed = False
                         print("[SYSTEEM] Reset naar vergrendelde modus (PIN_INPUT).")
                         state.mode = "PIN_INPUT"
@@ -194,6 +190,8 @@ def thread_button():
                         state.alarm_notified = False
                         state.unlock_executed = False
 
+                # Korte pauze (0,25 seconde) na een knopdruk tegen contactdender ("debounce"):
+                # de metalen veertjes in een drukknop trillen heel even bij het indrukken.
                 time.sleep(0.25)  # Debounce
 
             last_pressed = pressed
@@ -201,88 +199,68 @@ def thread_button():
         except Exception as e:
             print(f"[FOUT in Knop Thread]: {e}")
 
+        # Wacht 0,02 seconde (50 keer per seconde controleren)
         time.sleep(0.02)
 
 
 # ==============================================================================
-# THREAD 2: SENSOREN (BH1750, LM35, POTMETER) & OLED (10 Hz)
+# THREAD 2: SENSOREN UITLEZEN, ALARM-CONTROLE & OLED-SCHERM (10x per seconde)
 # ==============================================================================
 def thread_sensors_and_display():
-    """Thread 2: leest op 10 Hz de sensoren, bewaakt alarmen en ververst het OLED.
+    """
+    Deze achtergrondtaak doet 10 keer per seconde drie belangrijke dingen:
+    1. Leest de draaiknop (potmeter), temperatuursensor (LM35) en lichtsensor (BH1750) uit.
+    2. Controleert of er een alarm moet afgaan (Brand, Inbraak/Sabotage, of Loitering).
+    3. Tekent alle actuele waarden en de juiste scherminhoud op het OLED-display.
 
-    Doel:
-        Meetwaarden verzamelen (potmeter, LM35-temperatuur, BH1750-licht),
-        daaruit het gekozen cijfer afleiden, alarmcondities detecteren
-        (brand, sabotage, loitering), de LOCKOUT laten aflopen en het
-        scherm bijwerken.
-
-    Werking (stap voor stap):
-        1. Onder ``state.spi_lock``: lees de potmeter (MCP3008, 10 bit) en 5x de
-           LM35; de MEDIAAN van de 5 samples wordt gebruikt omdat de
-           stappenmotor stroompieken veroorzaakt die een gemiddelde zouden
-           vertekenen.
-        2. Zet de ruwe waarde om naar cijfer 0-9 (``raw*10//1024``, max 9).
-        3. Hysteresis: een nieuw cijfer wordt pas overgenomen als de waarde
-           minstens HYSTERESIS_10BIT voorbij de grens tussen twee cijfers ligt.
-           Dit voorkomt flikkeren door ruis rond een grens.
-        4. Lees de lichtsensor (I2C, geen SPI-lock nodig).
-        5. Onder ``state.lock``: update current_digit/temp_c/lux en
-           last_activity bij een draai. Brand: ``fire_count`` telt opeenvolgende
-           metingen boven TEMP_FIRE_THRESHOLD_C (genegeerd terwijl
-           ``motor_busy``) en bij FIRE_CONFIRM_READINGS volgt ALARM.
-           Sabotage: lux boven LUX_SABOTAGE_THRESHOLD in een gesloten kluis
-           (niet UNLOCKED/ALARM) -> ALARM. Loitering: perimeterafstand is
-           recent (niet ouder dan PERIMETER_STALE_S) en dichtbij, modus
-           PIN_INPUT, en geen activiteit gedurende LOITER_ALARM_S -> ALARM.
-           Verlopen LOCKOUT -> terug naar PIN_INPUT.
-        6. Maak een snapshot van de benodigde waarden (kopie van de pin) zodat
-           de lock vrijkomt vóór het trage tekenen.
-        7. Onder ``state.spi_lock``: ``display.toon_kluisscherm(...)``.
-
-    Parameters: geen.
-    Retourwaarde: geen (loopt tot ``state.running`` False wordt).
-
-    Gedeelde state / threads:
-        Leest en schrijft veel velden van VaultState onder ``state.lock``;
-        gebruikt ``state.spi_lock`` rond ADC en OLED (zelfde SPI0-bus). De twee
-        locks worden nooit genest gehouden.
-
-    Hardware/bibliotheek:
-        MCP3008 (SPI0), LM35 via ADC, BH1750 (I2C), SSD1306 OLED (SPI0).
-
-    Ontwerpkeuzes:
-        Mediaanfilter, hysteresis, bevestigingsteller voor brand en een
-        verouderingsgrens voor perimeterdata (Pico offline = negeren).
+    💡 SLIMME TRUCS VOOR JE PRESENTATIE:
+    - Waarom meten we de temperatuur 5 keer en nemen we het middelste getal (`temp_samples[2]`, de mediaan)?
+      Als de stappenmotor draait, kan er heel even een stroompiekje op de kabel zitten waardoor
+      één meting ineens 45°C lijkt. Door 5 metingen op volgorde te zetten en de middelste te kiezen,
+      vallen zulke uitschieters er altijd uit!
+    - Waarom gebruiken we `HYSTERESIS_10BIT` bij de draaiknop?
+      Zodat het gekozen cijfer (0 t/m 9) niet zenuwachtig heen en weer flikkert als de knop
+      precies op het randje tussen twee cijfers staat.
     """
     last_digit = 0
     fire_count = 0
 
     while state.running:
         try:
+            # --- STAP 1: Analoge sensoren uitlezen via de SPI-bus ---
+            # We gebruiken `state.spi_lock` zodat de MCP3008 en het OLED-scherm niet tegelijk praten.
             with state.spi_lock:
                 raw_10bit = sensors.lees_potmeter_raw()
+                # Lees 5x snel de temperatuur, sorteer van klein naar groot en pak de middelste (index 2)
                 temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
                 temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
-                # Zonder OLED-CS verschijnen ADC-transacties kort op het scherm.
+                # Ververs het scherm even om eventuele SPI-ruis van de sensor-meting weg te halen
                 display.refresh()
 
+            # Reken de potmeterwaarde (0..1023) om naar een cijfer van 0 t/m 9
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
 
+            # Hysteresis-controle: pas veranderen van cijfer als we duidelijk (minstens 12 punten)
+            # over de grens tussen het oude en het nieuwe cijfer heen zijn gedraaid.
             if candidate_digit != last_digit:
                 border_raw = (max(candidate_digit, last_digit) * 1024) // 10
                 if abs(raw_10bit - border_raw) >= HYSTERESIS_10BIT:
                     last_digit = candidate_digit
 
+            # Lees de digitale lichtsensor uit via I2C
             lux = sensors.lees_licht()
 
+            # --- STAP 2: Status bijwerken en Alarm-regels controleren ---
             with state.lock:
+                # Heeft de gebruiker aan de knop gedraaid? Noteer dat er activiteit was!
                 if last_digit != state.current_digit:
                     state.last_activity = time.monotonic()
                 state.current_digit = last_digit
                 state.temp_c = temp_c
                 state.lux = lux
 
-                # Tijdens de motorbeweging is de voeding onstabiel: negeer en eis ~1s aanhoudende overschrijding
+                # ALARM-CHECK 1: Brandalarm (Temperatuur > 30°C gedurende 10 metingen = 1 seconde)
+                # (Terwijl de motor draait negeren we dit even vanwege mogelijke stroomschommelingen)
                 if temp_c > TEMP_FIRE_THRESHOLD_C and not state.motor_busy:
                     fire_count += 1
                 else:
@@ -292,12 +270,13 @@ def thread_sensors_and_display():
                     state.mode = "ALARM"
                     state.alarm_reason = f"BRAND! T={temp_c:.1f}C"
 
+                # ALARM-CHECK 2: Inbraak / Sabotage (Veel licht in de kluis terwijl hij op slot zit!)
                 if lux > LUX_SABOTAGE_THRESHOLD and state.mode not in ("UNLOCKED", "ALARM"):
                     print(f"[SABOTAGE] Licht gedetecteerd in gesloten kluis ({lux:.1f} lux)!")
                     state.mode = "ALARM"
                     state.alarm_reason = f"BRAAK! ({int(lux)} lx)"
 
-                # Loitering: iemand staat te lang voor de kluis zonder de draaiknop of knop te gebruiken
+                # ALARM-CHECK 3: Loitering (Iemand staat te lang vlak voor de kluis zonder iets te doen)
                 nu = time.monotonic()
                 dichtbij = state.loitering_alert and (nu - state.perimeter_ts) < PERIMETER_STALE_S
                 if not dichtbij or state.mode != "PIN_INPUT":
@@ -305,12 +284,15 @@ def thread_sensors_and_display():
                 else:
                     if state.loiter_since is None:
                         state.loiter_since = nu
+                    # Staat de persoon er al langer dan LOITER_ALARM_S (15 sec) zonder te draaien/drukken?
                     if nu - max(state.loiter_since, state.last_activity) >= LOITER_ALARM_S:
                         print(f"[LOITER] Persoon > {LOITER_ALARM_S:.0f}s zonder actie voor de kluis!")
                         state.mode = "ALARM"
                         state.alarm_reason = "LOITER > 1 MIN"
                         state.loiter_since = None
 
+                # Maak een kopietje (snapshot) van alle waarden voor het OLED-scherm,
+                # zodat we het slotje (`state.lock`) weer snel kunnen loslaten.
                 mode = state.mode
                 digit = state.current_digit
                 pin_so_far = list(state.entered_pin)
@@ -318,15 +300,19 @@ def thread_sensors_and_display():
                 afstand_cm = state.perimeter_cm if (time.monotonic() - state.perimeter_ts) < PERIMETER_STALE_S else None
                 reason = state.alarm_reason
                 now = time.monotonic()
+
+                # Controleer of de blokkeertijd (`LOCKOUT`) na 3 foute pincodes inmiddels voorbij is
                 if state.mode == "LOCKOUT" and now >= state.lockout_until:
                     print("[AUTH] Wachtperiode voorbij, opnieuw proberen mogelijk.")
                     state.mode = "PIN_INPUT"
                     state.failed_attempts = 0
                     mode = "PIN_INPUT"
+
                 toon_fout = now < state.wrong_pin_until
                 pogingen_over = MAX_PIN_ATTEMPTS - state.failed_attempts
                 wachttijd_s = max(0, int(state.lockout_until - now))
 
+            # --- STAP 3: Teken het bijgewerkte scherm op het OLED-display ---
             with state.spi_lock:
                 display.toon_kluisscherm(
                     mode=mode,
@@ -347,81 +333,65 @@ def thread_sensors_and_display():
         except Exception as e:
             print(f"[FOUT in Sensor/OLED Thread]: {e}")
 
+        # Wacht 0,10 seconde (10 keer per seconde verversen)
         time.sleep(0.10)
 
 
 # ==============================================================================
-# THREAD 3: ACTUATOREN (RELAIS, STAPPENMOTOR, RGB LED & SIRENE)
+# THREAD 3: ACTUATOREN (STAPPENMOTOR, RELAIS, RGB-LED & SIRENE)
 # ==============================================================================
 def thread_actuators():
-    """Thread 3: stuurt RGB-LED, relais-interlock, stappenmotor en sirene aan.
-
-    Doel:
-        De fysieke uitgangen laten volgen op ``state.mode``.
-
-    Werking (stap voor stap):
-        1. Onder ``state.lock``: kopieer de modus, haal de eenmalige
-           sirene-aanvraag op (en wis die) en bepaal of een open- of
-           sluitbeweging nodig is via ``unlock_executed``/``lock_executed``.
-           De vlag wordt meteen gezet zodat de beweging slechts 1x start.
-        2. Buiten de lock (trage acties): lockout-sirene afspelen; bij
-           ontgrendelen groen licht, ``motor_busy`` aan, ``vault.open()``
-           (relais aan + 28BYJ-48 draait), daarna ``motor_busy`` uit;
-           bij vergrendelen blauw licht en ``vault.sluit()``.
-        3. Per modus: PIN_INPUT/LOCKOUT -> ``vault.stroomloos()`` (relais uit),
-           zwaailicht bij foute code, zacht rood in LOCKOUT, anders blauw.
-           VOICE_2FA -> oranje. UNLOCKED -> groen. ALARM -> stroomloos,
-           zwaailicht en elke 4 s de sirene.
-        4. Terug in PIN_INPUT na een alarm: sirene stoppen.
-        5. Slaap 30 ms tussen updates.
-
-    Parameters: geen.
-    Retourwaarde: geen (loopt tot ``state.running`` False wordt).
-
-    Gedeelde state / threads:
-        Leest mode, wrong_pin_until; schrijft unlock_executed, lock_executed,
-        motor_busy, lockout_siren_pending onder ``state.lock``. Geen SPI.
-        ``motor_busy`` laat de sensor-thread voedingsstoringen negeren.
-
-    Hardware/bibliotheek:
-        VaultLock (active-low relais als motor-interlock: de motor krijgt
-        alleen stroom tijdens een beweging, anders is hij stroomloos),
-        Zwaailicht (RGB LED), Notificaties (sirene).
-
-    Ontwerpkeuzes:
-        Na het openen wordt ``lock_executed`` weer False gezet, zodat een alarm
-        of reset tijdens de beweging de sluitbeweging niet overslaat. Het
-        langzame motorwerk gebeurt nooit onder de lock.
+    """
+    Deze achtergrondtaak kijkt naar de huidige modus (`state.mode`) en stuurt
+    alle "doe-dingen" (actuatoren) aan:
+    - Moet de kluis open? -> Zet de LED groen en laat de stappenmotor het slot openen.
+    - Moet de kluis dicht? -> Zet de LED blauw en laat de stappenmotor het slot sluiten.
+    - Welke kleur moet de RGB-LED hebben?
+      * Blauw:          Kluis vergrendeld (`PIN_INPUT`)
+      * Oranje:         Wachten op spraakwachtwoord (`VOICE_2FA`)
+      * Groen:          Kluis is geopend (`UNLOCKED`)
+      * Zacht rood:     Kluis is tijdelijk geblokkeerd (`LOCKOUT`)
+      * Rood knipperen: Foute code ingevoerd of `ALARM` (bij alarm loeit ook de sirene!)
     """
     last_siren_time = 0.0
 
     while state.running:
+        # Kijk kort op het notitiebord (`state`) welke acties er nodig zijn
         with state.lock:
             mode = state.mode
             siren_once = state.lockout_siren_pending
             state.lockout_siren_pending = False
+
+            # Moet de motor de kluis voor het eerst opendraaien?
             need_unlock_motion = (mode == "UNLOCKED" and not state.unlock_executed)
             if need_unlock_motion:
                 state.unlock_executed = True
 
+            # Moet de motor de kluis weer op slot draaien?
             need_lock_motion = (mode == "PIN_INPUT" and not state.lock_executed)
             if need_lock_motion:
                 state.lock_executed = True
 
+        # Speel 1x de sirene af als de kluis net geblokkeerd is na 3 foute pogingen
         if siren_once:
             notificaties.sirene()
 
+        # --- Motor-actie 1: Kluis OPENEN ---
+        # Let op: we draaien de motor BUITEN `with state.lock:`, zodat het scherm en
+        # de sensoren niet 30 seconden op ons hoeven te wachten terwijl de motor draait!
         if need_unlock_motion:
+            # Groen licht
             licht.kleur_procent(0, 100, 0)
             with state.lock:
                 state.motor_busy = True
             vault.open()
-            # Een alarm of reset tijdens het openen mag de sluitbeweging niet overslaan
             with state.lock:
                 state.lock_executed = False
                 state.motor_busy = False
 
+        # --- Motor-actie 2: Kluis SLUITEN ---
         if need_lock_motion:
+            # Blauw licht
             licht.kleur_procent(0, 0, 80)
             with state.lock:
                 state.motor_busy = True
@@ -429,7 +399,9 @@ def thread_actuators():
             with state.lock:
                 state.motor_busy = False
 
+        # --- RGB-LED en Sirene aansturen op basis van de huidige modus ---
         if mode in ("PIN_INPUT", "LOCKOUT"):
+            # Zorg dat het motor-relais veilig uit staat
             vault.stroomloos()
             with state.lock:
                 foute_code = time.monotonic() < state.wrong_pin_until
@@ -438,22 +410,28 @@ def thread_actuators():
             elif mode == "LOCKOUT":
                 licht.kleur_procent(30, 0, 0)  # Zacht rood tijdens wachtperiode
             else:
+                # Rustig blauw in normale wachtstand
                 licht.kleur_procent(0, 0, 80)
 
         elif mode == "VOICE_2FA":
+            # Oranje tijdens wachten op spraak
             licht.kleur_procent(80, 30, 0)
 
         elif mode == "UNLOCKED":
+            # Fel groen als de kluis open is
             licht.kleur_procent(0, 100, 0)
 
         elif mode == "ALARM":
             vault.stroomloos()
+            # Rood zwaailicht!
             licht.knipper_rood()
 
+            # Start elke 4 seconden de sirene opnieuw zolang het alarm actief is
             if time.time() - last_siren_time > 4.0:
                 notificaties.sirene()
                 last_siren_time = time.time()
 
+        # Is het alarm net gereset (terug naar `PIN_INPUT`)? Stop dan meteen de sirene!
         if mode == "PIN_INPUT" and last_siren_time:
             notificaties.stop_sirene()
             last_siren_time = 0.0
@@ -462,42 +440,24 @@ def thread_actuators():
 
 
 # ==============================================================================
-# THREAD 4: CLOUD (THINGSPEAK TELEMETRIE & NTFY PUSH)
+# THREAD 4: CLOUD & SMARTPHONE MELDINGEN (ThingSpeak & ntfy.sh)
 # ==============================================================================
 def thread_cloud():
-    """Thread 4: stuurt ThingSpeak-telemetrie (elke 15 s) en ntfy-pushberichten.
+    """
+    Deze achtergrondtaak regelt al het internetverkeer:
+    1. Als er een alarm is (of 3x een foute pincode), stuurt hij direct één
+       pushbericht naar je smartphone via `ntfy.sh`.
+    2. Elke 15 seconden (`TELEMETRY_INTERVAL_S`) stuurt hij alle meetwaarden
+       door naar het online ThingSpeak-dashboard via MQTT.
 
-    Doel:
-        Cloudcommunicatie loskoppelen van de realtime threads, zodat netwerk-
-        vertraging de besturing niet blokkeert.
-
-    Werking (stap voor stap):
-        1. Onder ``state.lock``: snapshot van mode, lux, temp_c, afstand, cijfer en
-           alarmreden. Bij ALARM zonder ``alarm_notified`` wordt die vlag gezet
-           (push slechts 1x per alarm); ``lockout_push_pending`` wordt gelezen
-           en gewist.
-        2. Buiten de lock: push bij lockout en/of alarm via ``notificaties``.
-        3. Elke TELEMETRY_INTERVAL_S (ThingSpeak-limiet 15 s): ``mqtt.stuur_telemetrie``
-           of, zonder credentials (``mqtt`` is None), alleen printen.
-        4. Slaap 0,5 s.
-
-    Parameters: geen.
-    Retourwaarde: geen (loopt tot ``state.running`` False wordt).
-
-    Gedeelde state / threads:
-        Leest mode/lux/temp_c/perimeter_cm/current_digit/alarm_reason, schrijft alarm_notified
-        en lockout_push_pending onder ``state.lock``. Geen SPI.
-
-    Hardware/bibliotheek:
-        paho-mqtt via MQTTClient (ThingSpeak), ntfy via Notificaties.
-
-    Ontwerpkeuzes:
-        Eénmalige push-vlaggen; MODE_CODES vertaalt de modus naar een getal
-        voor ThingSpeak.
+    Waarom in een aparte thread?
+    Als het internet traag is, heeft de rest van de kluis (knop, scherm, motor)
+    daar helemaal geen last van!
     """
     last_push = 0.0
 
     while state.running:
+        # Haal de laatste gegevens op van het centrale notitiebord (`state`)
         with state.lock:
             mode = state.mode
             lux = state.lux
@@ -505,23 +465,29 @@ def thread_cloud():
             dist = state.perimeter_cm
             digit = state.current_digit
             reason = state.alarm_reason
+
+            # Zorg dat we bij een alarm maar ÉÉN keer een pushbericht sturen
             should_alert = (mode == "ALARM" and not state.alarm_notified)
             if should_alert:
                 state.alarm_notified = True
+
             lockout_alert = state.lockout_push_pending
             state.lockout_push_pending = False
 
+        # Stuur smartphone-melding bij 3x foute pincode
         if lockout_alert:
             notificaties.stuur_push(
                 f"SMART VAULT: {MAX_PIN_ATTEMPTS}x foute pincode. "
                 f"Kluis {PIN_LOCKOUT_S // 60} minuten geblokkeerd."
             )
 
+        # Stuur smartphone-melding bij een Alarm (Brand, Inbraak of Loitering)
         if should_alert:
             notificaties.stuur_push(
                 f"SMART VAULT ALARM: {reason} (Lux={lux:.1f}, Temp={temp_c:.1f}C)"
             )
 
+        # Stuur elke 15 seconden een update naar de ThingSpeak-grafieken
         if time.time() - last_push >= TELEMETRY_INTERVAL_S:
             if mqtt is not None:
                 mqtt.stuur_telemetrie(
@@ -538,59 +504,41 @@ def thread_cloud():
 
 
 # ==============================================================================
-# PERIMETER (PICO WH VIA LOKALE MQTT BROKER)
-# ==============================================================================
-# ==============================================================================
-# THREAD 5: SPRAAKHERKENNING (FACTOR 2)
+# THREAD 5: SPRAAKHERKENNING VOOR STAP 2 (Factor 2 - Vosk)
 # ==============================================================================
 def thread_voice():
-    """Thread 5: spraakherkenning voor Factor 2 (alleen gestart zonder bypass).
-
-    Doel:
-        Na een correcte PIN moet de gebruiker de geheime passphrase uitspreken.
-
-    Werking (stap voor stap):
-        1. Laad direct het (zware) Vosk-model zodat de eerste poging snel is.
-        2. Poll elke 0,2 s of ``state.mode == "VOICE_2FA"``.
-        3. Zo ja: ``voice.luister`` met timeout VOICE_TIMEOUT_S. De ``stop``-
-           callback breekt het luisteren af bij afsluiten of moduswissel
-           (bv. alarm of knop-reset). Fouten geven een lege tekst.
-        4. Onder ``state.lock``: als de modus nog VOICE_2FA is en de passphrase
-           in de herkende tekst zit -> UNLOCKED (``unlock_executed`` False),
-           anders terug naar PIN_INPUT met lege pin.
-
-    Parameters: geen.
-    Retourwaarde: geen (loopt tot ``state.running`` False wordt).
-
-    Gedeelde state / threads:
-        Leest/schrijft mode, entered_pin, unlock_executed onder ``state.lock``;
-        de ``stop``-lambda leest state zonder lock (enkel lezen van een
-        string/bool). Het luisteren zelf gebeurt buiten de lock.
-
-    Hardware/bibliotheek:
-        USB-microfoon + Vosk via VoiceRecognition.
-
-    Ontwerpkeuzes:
-        De modus wordt opnieuw gecontroleerd na het luisteren, zodat een
-        tussentijdse alarm/reset niet wordt overschreven.
+    """
+    Deze achtergrondtaak verzorgt de tweede beveiligingsstap (Factor 2: Spraak).
+    Zodra de pincode goed is ingevoerd, verandert `state.mode` naar `"VOICE_2FA"`.
+    Deze thread ziet dat en zet direct de microfoon maximaal 20 seconden aan:
+    - Hoort hij het geheime woord (`VOICE_PASSPHRASE`, standaard `"open"`)?
+      Dan zet hij de kluis op `"UNLOCKED"` en draait de motor het slot open!
+    - Hoort hij na 20 seconden niets (of het verkeerde woord)?
+      Dan valt de kluis weer veilig terug op slot (`"PIN_INPUT"`).
     """
     try:
+        # Laad bij het opstarten alvast het Vosk-taalmodel in het geheugen,
+        # zodat de microfoon straks zonder vertraging kan beginnen met luisteren.
         voice.laad()
     except Exception as e:
         print(f"[VOICE FOUT] Model laden mislukt: {e}")
 
     while state.running:
+        # Kijk of we al in de `VOICE_2FA` modus zitten
         with state.lock:
             wacht_op_spraak = (state.mode == "VOICE_2FA")
 
+        # Nog niet aan de beurt? Wacht 0,2 seconde en kijk opnieuw.
         if not wacht_op_spraak:
             time.sleep(0.2)
             continue
 
+        # We zijn in `VOICE_2FA`! Start het luisteren via de USB-microfoon.
         print(f"[VOICE] Luisteren naar '{VOICE_PASSPHRASE}' ({VOICE_TIMEOUT_S:.0f}s)...")
         try:
             gehoord = voice.luister(
                 timeout_s=VOICE_TIMEOUT_S,
+                # Stop meteen met luisteren als het programma sluit of als er intussen een alarm afgaat
                 stop=lambda: not state.running or state.mode != "VOICE_2FA",
                 doelzin=VOICE_PASSPHRASE.lower(),
             )
@@ -599,10 +547,13 @@ def thread_voice():
             gehoord = ""
             time.sleep(1.0)
 
+        # Controleer het resultaat
         with state.lock:
+            # Als de modus tijdens het luisteren al veranderd is (bijv. door een alarm), doe dan niets
             if state.mode != "VOICE_2FA":
                 continue
 
+            # Zit het geheime wachtwoord in de herkende tekst?
             if VOICE_PASSPHRASE.lower() in gehoord.lower():
                 print("[AUTH] Factor 2 (spraak) correct! -> UNLOCKED")
                 state.mode = "UNLOCKED"
@@ -613,26 +564,15 @@ def thread_voice():
                 state.entered_pin = []
 
 
+# ==============================================================================
+# ONTVANGSTFUNCTIE VOOR DE PICO 2 W AFSTANDSSENSOR (Lokale MQTT)
+# ==============================================================================
 def on_perimeter_afstand(dist_cm):
-    """Callback voor nieuwe afstandsmetingen van de Pico WH (perimetersensor).
-
-    Doel:
-        Bewaart de laatste afstand en bepaalt of er iemand dichtbij staat.
-
-    Werking:
-        Wordt aangeroepen vanuit de MQTT-netwerkthread van ``PerimeterListener``.
-        Onder ``state.lock`` worden ``perimeter_cm``, ``perimeter_ts``
-        (monotonic tijdstip, voor veroudering) en ``loitering_alert``
-        (afstand < LOITER_DISTANCE_CM) gezet. De sensor-thread beslist
-        daarna of dit tot een loiter-alarm leidt.
-
-    Parameters:
-        dist_cm (float): gemeten afstand in centimeter.
-
-    Retourwaarde: geen.
-
-    Gedeelde state: schrijft perimeter_cm, perimeter_ts, loitering_alert
-    onder ``state.lock``. Houd deze callback kort (blokkeert MQTT-thread).
+    """
+    Wordt automatisch aangeroepen telkens als de Pico 2 W (via lokale MQTT)
+    een nieuwe afstandsmeting in centimeters doorstuurt.
+    Slaat de afstand en het huidige tijdstip op, en zet `loitering_alert` op True
+    als er iemand dichterbij staat dan 40 cm (`LOITER_DISTANCE_CM`).
     """
     with state.lock:
         state.perimeter_cm = dist_cm
@@ -640,65 +580,49 @@ def on_perimeter_afstand(dist_cm):
         state.loitering_alert = (dist_cm < LOITER_DISTANCE_CM)
 
 
+# ==============================================================================
+# HOOFDFUNCTIE: ALLES OPSTARTEN EN BIJ AFSLUITEN NETJES OPRUIMEN
+# ==============================================================================
 def main():
-    """Startpunt: verbindt MQTT, start alle threads en ruimt netjes op.
-
-    Doel:
-        Het hele systeem opstarten en bij Ctrl+C of afsluiten alle hardware
-        veilig vrijgeven.
-
-    Werking (stap voor stap):
-        1. Toon een opstartbanner met pincode en bypass-status.
-        2. Start de ``PerimeterListener`` (lokale broker, Pico WH) met
-           ``on_perimeter_afstand`` als callback.
-        3. Verbind ThingSpeak-MQTT indien er credentials zijn; een
-           onbereikbare broker is slechts een waarschuwing.
-        4. Maak de daemon-threads Button, Sensors-OLED, Actuators, Cloud en
-           (indien geen bypass) Voice, en start ze.
-        5. Hoofdlus slaapt tot KeyboardInterrupt.
-        6. ``finally``: ``state.running`` = False, kort wachten zodat threads
-           stoppen, dan MQTT sluiten, motor stroomloos (relais uit), en
-           LED, display, sensoren, microfoon en knop vrijgeven (GPIO/SPI).
-
-    Parameters: geen.
-    Retourwaarde: geen.
-
-    Gedeelde state / threads:
-        Schrijft alleen ``state.running`` (zonder lock; enkelvoudige bool als
-        stopsignaal). De hoofdthread doet verder geen werk.
-
-    Ontwerpkeuzes:
-        Daemon-threads zodat het proces nooit blijft hangen; ``stroomloos()``
-        vóór ``close()`` zodat de motor nooit onder spanning blijft staan.
     """
-
+    Start alle verbindingen en achtergrondtaken (threads) op, en zorgt ervoor
+    dat bij het stoppen (Ctrl+C) alle motoren, lampjes en GPIO-pinnen veilig
+    worden uitgeschakeld.
+    """
     print("=====================================================")
     print(" SMART VAULT CONTROLLER v1.3 OPSTARTEN...")
     print(f"    Geheime Pincode : {SECRET_PIN}")
     print(f"    Voice 2FA Bypass: {BYPASS_VOICE_2FA}")
     print("=====================================================")
 
+    # 1. Start het luisteren naar de Pico 2 W afstandssensor op de lokale MQTT-broker
     perimeter = PerimeterListener(on_perimeter_afstand)
     perimeter.connect()
 
+    # 2. Verbind met ThingSpeak in de cloud (als de inloggegevens in `.env` staan)
     if mqtt is not None:
         try:
             mqtt.connect()
         except Exception as e:
             print(f"[THINGSPEAK WAARSCHUWING] Broker niet bereikbaar: {e}")
 
+    # 3. Maak onze achtergrondtaken (threads) aan.
+    # `daemon=True` betekent: als het hoofdprogramma stopt, stoppen deze taken automatisch mee.
     threads = [
         threading.Thread(target=thread_button, name="Button", daemon=True),
         threading.Thread(target=thread_sensors_and_display, name="Sensors-OLED", daemon=True),
         threading.Thread(target=thread_actuators, name="Actuators", daemon=True),
         threading.Thread(target=thread_cloud, name="Cloud", daemon=True),
     ]
+    # Start de spraak-thread alleen als we de microfoon echt gebruiken
     if not BYPASS_VOICE_2FA:
         threads.append(threading.Thread(target=thread_voice, name="Voice", daemon=True))
 
+    # Start alle threads!
     for t in threads:
         t.start()
 
+    # 4. Houd het hoofdprogramma levend tot de gebruiker op Ctrl+C drukt
     try:
         while True:
             time.sleep(0.5)
@@ -707,13 +631,17 @@ def main():
         print("\n[SHUTDOWN] Bezig met veilig afsluiten en vrijgeven van GPIO-pinnen...")
 
     finally:
+        # 5. VEILIG AFSLUITEN: Dit blok wordt ALTIJD uitgevoerd als het programma stopt.
+        # Geef alle threads het signaal om te stoppen en wacht 0,3 seconde.
         state.running = False
         time.sleep(0.3)
 
+        # Sluit de MQTT-verbindingen
         perimeter.close()
         if mqtt is not None:
             mqtt.close()
 
+        # Zet de motor stroomloos en geef alle GPIO-pinnen netjes vrij
         vault.stroomloos()
         vault.close()
         licht.close()
