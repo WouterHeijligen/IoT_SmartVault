@@ -74,12 +74,13 @@ except Exception as e:
     print(f"  ❌ Fout bij MCP3008 ADC: {e}")
 
 # ------------------------------------------------------------------------------
-# STAP 4: Test het SSD1306 OLED-schermpje (deelt dezelfde SPI-bus als de MCP3008)
+# STAP 4: Test het SSD1306 OLED-schermpje op SPI1
 # ------------------------------------------------------------------------------
-print("\n[4/7] SSD1306 SPI OLED Display testen...")
+print("\n[4/7] SSD1306 SPI1 OLED Display testen...")
 try:
-    disp = Display(spi=sensors.spi)
-    disp.toon_tekst("SMART VAULT\nPre-Flight OK!", grootte=14)
+    spi1 = busio.SPI(clock=board.D21, MOSI=board.D20)
+    disp = Display(spi=spi1)
+    disp.toon_tekst("SMART VAULT", "Pre-Flight OK!")
     print("  ✅ OLED scherm aangestuurd ('SMART VAULT Pre-Flight OK!').")
     time.sleep(1.5)
 except Exception as e:
@@ -156,6 +157,7 @@ except Exception as e:
 # ------------------------------------------------------------------------------
 try:
     disp.close()
+    spi1.deinit()
     sensors.close()
     rgb.close()
     lock.close()

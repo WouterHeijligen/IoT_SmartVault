@@ -64,8 +64,9 @@
       not I2C. The MCP3008 uses SPI0 (GPIO 11/10/9, CS 25).</p>
     <p><code>main.py</code> opens <code>busio.SPI(clock=board.D21, MOSI=board.D20)</code>.
       SPI1 configuration is described in <a href="setup.html#spi1">the setup notes</a>.
-      The standalone display test and preflight scripts still select SPI0 in the
-      inspected source; they do not currently test this OLED configuration.</p>
+      The root <code>preflight_check.py</code> uses the same SPI1 mapping. The standalone
+      <code>display.py</code> test still defaults to SPI0 and does not currently
+      test this OLED configuration.</p>
     <h2>Pico 2 W perimeter node</h2>
     <p>A separate Raspberry Pi Pico 2 W runs CircuitPython and measures distance with an
       RCWL-9610A sonar in trigger/echo mode. It publishes the distance in cm to the MQTT

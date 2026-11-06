@@ -49,7 +49,7 @@ Voer deze controles uit **voordat** je `main.py` start of de camera aanzet:
 - [x] **6. 30-Seconden Hardware Diagnostic Check uitvoeren:**
   - Draai vanuit de projectmap:
     ```bash
-    python3 test_scripts/preflight_check.py
+    python3 preflight_check.py
     ```
   - Bevestig dat I2C, SPI (ADC), OLED, RGB LED, Relais/Motor en de knop allemaal groen vinken.
 

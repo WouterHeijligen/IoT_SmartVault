@@ -80,6 +80,11 @@ NTFY_TOPIC=your_own_topic_name</code></pre>
     <aside class="notice"><strong>Note:</strong> the configured MQTT transport is
       unencrypted; do not treat this prototype as a secure deployment.</aside>
     <h2>4. Run the vault</h2>
+    <p>The hardware preflight is <code>python3 preflight_check.py</code> from the
+      repository root. It actively reads sensors and operates the OLED, LED,
+      relay and motor; run it only with reviewed wiring and a safe mechanical
+      setup. The separate <code>tests/</code> directory contains host-side unit
+      tests, not the hardware preflight.</p>
     <pre><code>source env/bin/activate
 python3 main.py</code></pre>
     <p>Startup initializes the hardware immediately, including relay and stepper

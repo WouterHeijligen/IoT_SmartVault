@@ -44,6 +44,7 @@ import threading
 import time
 
 import board
+import busio
 import digitalio
 
 from zwaailicht import Zwaailicht
@@ -92,8 +93,9 @@ button.switch_to_input(pull=digitalio.Pull.UP)
 licht = Zwaailicht()
 sensors = Sensors()
 vault = VaultLock()
-# Geef de SPI-kabel van de sensoren door aan het OLED-scherm (ze delen dezelfde SPI-bus)
-display = Display(spi=sensors.spi)
+# OLED draait op de eigen, storingsvrije SPI1-bus!
+spi1 = busio.SPI(clock=board.D21, MOSI=board.D20)
+display = Display(spi=spi1)
 voice = VoiceRecognition()
 notificaties = Notificaties()
 # Start de achtergrondcontrole die de Bluetooth-speaker verbonden houdt
@@ -235,8 +237,6 @@ def thread_sensors_and_display():
                 # Lees 5x snel de temperatuur, sorteer van klein naar groot en pak de middelste (index 2)
                 temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
                 temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
-                # Ververs het scherm even om eventuele SPI-ruis van de sensor-meting weg te halen
-                display.refresh()
 
             # Reken de potmeterwaarde (0..1023) om naar een cijfer van 0 t/m 9
             candidate_digit = min((raw_10bit * 10) // 1024, 9)

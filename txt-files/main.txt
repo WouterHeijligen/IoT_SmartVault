@@ -44,6 +44,7 @@ import threading
 import time
 
 import board
+import busio
 import digitalio
 
 from zwaailicht import Zwaailicht
@@ -70,6 +71,7 @@ from vault_state import (
     LOITER_ALARM_S,
     PERIMETER_STALE_S,
     TELEMETRY_INTERVAL_S,
+    ALARM_PUSH_INTERVAL_S,
     MODE_CODES,
 )
 
@@ -91,8 +93,9 @@ button.switch_to_input(pull=digitalio.Pull.UP)
 licht = Zwaailicht()
 sensors = Sensors()
 vault = VaultLock()
-# Geef de SPI-kabel van de sensoren door aan het OLED-scherm (ze delen dezelfde SPI-bus)
-display = Display(spi=sensors.spi)
+# OLED draait op de eigen, storingsvrije SPI1-bus!
+spi1 = busio.SPI(clock=board.D21, MOSI=board.D20)
+display = Display(spi=spi1)
 voice = VoiceRecognition()
 notificaties = Notificaties()
 # Start de achtergrondcontrole die de Bluetooth-speaker verbonden houdt
@@ -234,8 +237,6 @@ def thread_sensors_and_display():
                 # Lees 5x snel de temperatuur, sorteer van klein naar groot en pak de middelste (index 2)
                 temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
                 temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
-                # Ververs het scherm even om eventuele SPI-ruis van de sensor-meting weg te halen
-                display.refresh()
 
             # Reken de potmeterwaarde (0..1023) om naar een cijfer van 0 t/m 9
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
@@ -445,8 +446,9 @@ def thread_actuators():
 def thread_cloud():
     """
     Deze achtergrondtaak regelt al het internetverkeer:
-    1. Als er een alarm is (of 3x een foute pincode), stuurt hij direct één
-       pushbericht naar je smartphone via `ntfy.sh`.
+    1. Bij een alarm stuurt hij een pushbericht via `ntfy.sh`, maximaal elke
+       `ALARM_PUSH_INTERVAL_S` seconden. Een reset wist die wachttijd niet.
+       Na 3x een foute pincode stuurt hij een afzonderlijk lockoutbericht.
     2. Elke 15 seconden (`TELEMETRY_INTERVAL_S`) stuurt hij alle meetwaarden
        door naar het online ThingSpeak-dashboard via MQTT.
 
@@ -455,6 +457,7 @@ def thread_cloud():
     daar helemaal geen last van!
     """
     last_push = 0.0
+    last_alarm_push = None
 
     while state.running:
         # Haal de laatste gegevens op van het centrale notitiebord (`state`)
@@ -465,9 +468,11 @@ def thread_cloud():
             dist = state.perimeter_cm
             digit = state.current_digit
             reason = state.alarm_reason
-
-            # Zorg dat we bij een alarm maar ÉÉN keer een pushbericht sturen
-            should_alert = (mode == "ALARM" and not state.alarm_notified)
+            now = time.monotonic()
+            should_alert = mode == "ALARM" and (
+                last_alarm_push is None
+                or now - last_alarm_push >= ALARM_PUSH_INTERVAL_S
+            )
             if should_alert:
                 state.alarm_notified = True
 
@@ -483,6 +488,7 @@ def thread_cloud():
 
         # Stuur smartphone-melding bij een Alarm (Brand, Inbraak of Loitering)
         if should_alert:
+            last_alarm_push = time.monotonic()
             notificaties.stuur_push(
                 f"SMART VAULT ALARM: {reason} (Lux={lux:.1f}, Temp={temp_c:.1f}C)"
             )
