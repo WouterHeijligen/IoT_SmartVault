@@ -56,7 +56,7 @@
         <thead><tr><th>Component</th><th>Current source</th></tr></thead>
         <tbody>
           <tr><td>Sensors</td><td>LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.</td></tr>
-          <tr><td>Display and indicator</td><td>SPI SSD1306 vault screens and a PWM RGB LED with zwaailicht effect.</td></tr>
+          <tr><td>Display and indicator</td><td>SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with zwaailicht effect. The ADC stays on SPI0.</td></tr>
           <tr><td>Code entry</td><td>3-digit potentiometer PIN with retry counter and 5 minute lockout.</td></tr>
           <tr><td>Lock mechanism</td><td>Relay interlock and stepper driven by the vault state.</td></tr>
           <tr><td>Alarms</td><td>Fire and tamper (light) detection, siren and ntfy push notification.</td></tr>

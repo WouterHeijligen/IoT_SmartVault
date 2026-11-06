@@ -9,6 +9,8 @@ hardware pin assignments, and known limitations:
 The site becomes available after GitHub Pages is enabled and the first deployment succeeds.
 The latest connection diagram is included, with remaining code/wiring differences
 listed on the hardware page. Physical wiring has not been verified.
+The OLED uses SPI1 (SCLK GPIO21, MOSI GPIO20); the MCP3008 uses SPI0.
+See the [connections](docs/hardware.html) and [SPI1 setup](docs/setup.html#spi1).
 
 To preview locally, run `python -m http.server 8000 --bind 127.0.0.1 --directory docs`
 and open <http://127.0.0.1:8000>.

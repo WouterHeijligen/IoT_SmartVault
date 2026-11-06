@@ -37,7 +37,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
     <table>
       <thead><tr><th>Bestand</th><th>Rol</th><th>Belangrijkste libraries</th></tr></thead>
       <tbody>
-        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>board</code>, <code>digitalio</code></td></tr>
+        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>board</code>, <code>busio</code>, <code>digitalio</code></td></tr>
         <tr><td><code>vault_state.py</code></td><td>Drempelwaarden, pincode en gedeelde status (<code>VaultState</code>)</td><td><code>threading</code></td></tr>
         <tr><td><code>sensors.py</code></td><td>Potmeter, LM35 (via MCP3008) en BH1750</td><td><code>board</code>, <code>busio</code>, <code>digitalio</code>, <code>adafruit_mcp3xxx</code></td></tr>
         <tr><td><code>display.py</code></td><td>SSD1306 OLED-schermen over SPI</td><td><code>adafruit_ssd1306</code>, <code>Pillow</code></td></tr>
@@ -76,8 +76,9 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
       </tbody>
     </table>
     <p>Alle threads delen één <code>VaultState</code>. Wijzigingen gebeuren onder
-      <code>state.lock</code>. De SPI-bus wordt gedeeld door ADC en OLED en is beschermd met
-      <code>state.spi_lock</code>, zodat nooit twee threads tegelijk SPI gebruiken.</p>
+      <code>state.lock</code>. De ADC gebruikt SPI0 en de OLED SPI1, met aparte
+      klok- en datadraden. De transacties gebeuren onder
+      <code>state.spi_lock</code>.</p>
 
     <h2 id="state-machine">State machine</h2>
     <table>
@@ -107,7 +108,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
       <li><strong>MCP3008:</strong> SPI0, CS GPIO 25; kanaal 0 = potmeter, kanaal 1 = LM35 (10 mV per graad).</li>
       <li><strong>Alarmpush:</strong> direct bij het eerste alarm, daarna maximaal elke 2 minuten zolang ALARM actief blijft. Een reset wist de wachttijd niet. Instelbaar via <code>ALARM_PUSH_INTERVAL_S</code>; sirene en lockoutmeldingen blijven ongewijzigd.</li>
       <li><strong>BH1750:</strong> I2C 0x23; één keer in continue hoge-resolutiemodus gezet (commando 0x10), daarna alleen gelezen. Lux = ruwe waarde / 1,2.</li>
-      <li><strong>OLED:</strong> SSD1306 128x64 over SPI (RST 16, DC 6, zonder CS); na iedere MCP3008-lezing wordt het beeld opnieuw verstuurd om zichtbare SPI-ruis te overschrijven. Bovenaan staan <code>L:</code> lux, <code>T:</code> temperatuur en <code>A:</code> afstand.</li>
+      <li><strong>OLED:</strong> SSD1306 128x64 op SPI1: SCLK GPIO21 (fysieke pin 40), MOSI GPIO20 (pin 38), RST GPIO16 en DC GPIO6. Geen CS of MISO aangesloten. Bovenaan staan <code>L:</code> lux, <code>T:</code> temperatuur en <code>A:</code> afstand. Zie <a href="hardware.html">de aansluitingen</a> en <a href="setup.html#spi1">SPI1-configuratie</a>.</li>
       <li><strong>Stappenmotor:</strong> 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 3072 stappen, 10 ms per stap (ongeveer 31 s). Openen gebruikt de omgekeerde sequentie (<code>vooruit=False</code>), sluiten de normale (<code>vooruit=True</code>).</li>
       <li><strong>Zwaailicht:</strong> RGB op GPIO 12/13/26 via PWM; bij een foute code en bij alarm knippert de LED eenvoudig rood/uit met dezelfde functie.</li>
     </ul>
@@ -130,7 +131,7 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
     <ul>
       <li>Waarom een mediaan en een bevestigingsteller voor de brandmelding?</li>
       <li>Waarom gebruiken we een relais in serie met de motorvoeding?</li>
-      <li>Waarom hebben ADC en OLED een gedeelde SPI-lock nodig?</li>
+      <li>Welke signalen gebruikt de OLED op SPI1 en welke gebruikt de ADC op SPI0?</li>
       <li>Wat gebeurt er als de Pico offline gaat? (afstand wordt na 10 s als verouderd genegeerd)</li>
       <li>Waarom werkt de sirene niet onder <code>sudo</code> zonder aanpassing? (PipeWire-sessie van de gebruiker)</li>
       <li>Hoe voorkomt de hysterese dat het cijfer flikkert?</li>
