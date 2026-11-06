@@ -19,19 +19,14 @@ beeld flikkeren). In plaats daarvan maken we met de Python-bibliotheek `PIL`
 Pas als alle tekst en lijntjes op dat plaatje staan, sturen we het hele
 plaatje in één keer naar het scherm met `self.oled.show()`!
 
-💡 GOEDE VRAAG OP JE VERDEDIGING (Waarom zit de SPI-kabel gedeeld met de MCP3008?):
-Zowel het OLED-scherm als de MCP3008 sensor-chip gebruiken de snelle SPI-datakabel.
-Ons OLED-schermpje heeft géén eigen 'Chip Select' (CS) pin om hem uit te zetten
-terwijl we de sensoren uitlezen. Daarom:
-1. Gebruiken we in `main.py` een slotje (`state.spi_lock`), zodat we nooit tegelijk
-   sensoren lezen én op het scherm tekenen.
-2. Roepen we na het lezen van de sensoren altijd even `display.refresh()` aan,
-   zodat eventuele ruis op het scherm meteen wordt overschreven met het goede beeld!
+De OLED gebruikt SPI1: klok GPIO21, data GPIO20, reset GPIO16 en DC GPIO6.
+Het scherm heeft geen CS- of MISO-aansluiting. De MCP3008 gebruikt SPI0.
 """
 
 import textwrap
 
 import board
+import busio
 import digitalio
 import adafruit_ssd1306
 
@@ -45,8 +40,8 @@ class Display:
     Aansluitingen op de Raspberry Pi:
         - OLED RST (Reset)        -> GPIO 16
         - OLED DC  (Data/Command) -> GPIO 6
-        - OLED CLK (Klok)         -> SPI SCLK (GPIO 11)
-        - OLED DATA               -> SPI MOSI (GPIO 10)
+        - OLED CLK / SCL (Klok)   -> SPI1 SCLK (GPIO 21, fysieke pin 40)
+        - OLED DATA / SDA         -> SPI1 MOSI (GPIO 20, fysieke pin 38)
     """
 
     # Het schermpje is 128 pixels breed en 64 pixels hoog
@@ -61,15 +56,17 @@ class Display:
     ):
         """
         Zet het OLED-schermpje klaar voor gebruik en maakt het scherm leeg (zwart).
-        Als `main.py` al een SPI-verbinding heeft gemaakt (van `sensors.py`),
-        geven we die mee via `spi`, zodat ze netjes dezelfde verbinding delen.
+        Standaard opent het scherm de eigen SPI1-bus. Een meegegeven
+        SPI-verbinding blijft eigendom van de aanroeper.
         """
         # Maak de twee stuurpinnen aan (Reset en Data/Command)
         self.oled_reset = digitalio.DigitalInOut(reset_pin)
         self.oled_dc = digitalio.DigitalInOut(dc_pin)
 
-        # Gebruik de gedeelde SPI-bus als die is meegegeven, of maak er anders zelf één aan
-        self.spi = spi if spi is not None else board.SPI()
+        self._owns_spi = spi is None
+        self.spi = spi if spi is not None else busio.SPI(
+            clock=board.D21, MOSI=board.D20
+        )
 
         # Start het SSD1306 OLED-scherm op via SPI (de laatste `None` betekent: geen CS-pin)
         self.oled = adafruit_ssd1306.SSD1306_SPI(
@@ -98,14 +95,6 @@ class Display:
 
         self.oled.fill(0)
         self.oled.show()
-
-    def refresh(self):
-        """
-        Stuurt het laatst getekende plaatje opnieuw naar het scherm.
-        Handig nadat de MCP3008 sensor-chip net over dezelfde SPI-kabel heeft gepraat!
-        """
-        if not self._closed:
-            self.oled.show()
 
     def toon_tekst(self, titel, tekst):
         """
@@ -333,12 +322,14 @@ class Display:
         if self._closed:
             return
 
-        self.clear()
-
-        self.oled_dc.deinit()
-        self.oled_reset.deinit()
-
-        self._closed = True
+        try:
+            self.clear()
+        finally:
+            self.oled_dc.deinit()
+            self.oled_reset.deinit()
+            if self._owns_spi:
+                self.spi.deinit()
+            self._closed = True
 
         print("OLED-display afgesloten.")
 

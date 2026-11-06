@@ -31,7 +31,6 @@ print("=" * 65)
 print("\n[1/7] Python modules & Adafruit Blinka laden...")
 try:
     import board
-    import busio
     import digitalio
     from sensors import Sensors
     from display import Display
@@ -78,8 +77,7 @@ except Exception as e:
 # ------------------------------------------------------------------------------
 print("\n[4/7] SSD1306 SPI1 OLED Display testen...")
 try:
-    spi1 = busio.SPI(clock=board.D21, MOSI=board.D20)
-    disp = Display(spi=spi1)
+    disp = Display()
     disp.toon_tekst("SMART VAULT", "Pre-Flight OK!")
     print("  ✅ OLED scherm aangestuurd ('SMART VAULT Pre-Flight OK!').")
     time.sleep(1.5)
@@ -157,7 +155,6 @@ except Exception as e:
 # ------------------------------------------------------------------------------
 try:
     disp.close()
-    spi1.deinit()
     sensors.close()
     rgb.close()
     lock.close()

@@ -105,7 +105,6 @@ class VaultState:
         Zet alle variabelen klaar met hun veilige startwaarde (kluis op slot).
         """
         self.lock = threading.Lock()
-        self.spi_lock = threading.Lock()  # Voorkomt gelijktijdige SPI-toegang tussen ADC en OLED
         self.running = True
         self.mode = "PIN_INPUT"
         self.current_digit = 0

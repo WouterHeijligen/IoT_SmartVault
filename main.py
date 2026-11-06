@@ -44,7 +44,6 @@ import threading
 import time
 
 import board
-import busio
 import digitalio
 
 from zwaailicht import Zwaailicht
@@ -93,9 +92,7 @@ button.switch_to_input(pull=digitalio.Pull.UP)
 licht = Zwaailicht()
 sensors = Sensors()
 vault = VaultLock()
-# OLED draait op de eigen, storingsvrije SPI1-bus!
-spi1 = busio.SPI(clock=board.D21, MOSI=board.D20)
-display = Display(spi=spi1)
+display = Display()
 voice = VoiceRecognition()
 notificaties = Notificaties()
 # Start de achtergrondcontrole die de Bluetooth-speaker verbonden houdt
@@ -231,12 +228,10 @@ def thread_sensors_and_display():
     while state.running:
         try:
             # --- STAP 1: Analoge sensoren uitlezen via de SPI-bus ---
-            # We gebruiken `state.spi_lock` zodat de MCP3008 en het OLED-scherm niet tegelijk praten.
-            with state.spi_lock:
-                raw_10bit = sensors.lees_potmeter_raw()
-                # Lees 5x snel de temperatuur, sorteer van klein naar groot en pak de middelste (index 2)
-                temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
-                temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
+            raw_10bit = sensors.lees_potmeter_raw()
+            # Lees 5x snel de temperatuur, sorteer van klein naar groot en pak de middelste (index 2)
+            temp_samples = sorted(sensors.lees_temperatuur() for _ in range(5))
+            temp_c = temp_samples[2]  # Mediaan filtert pieken door motorstroom
 
             # Reken de potmeterwaarde (0..1023) om naar een cijfer van 0 t/m 9
             candidate_digit = min((raw_10bit * 10) // 1024, 9)
@@ -314,22 +309,21 @@ def thread_sensors_and_display():
                 wachttijd_s = max(0, int(state.lockout_until - now))
 
             # --- STAP 3: Teken het bijgewerkte scherm op het OLED-display ---
-            with state.spi_lock:
-                display.toon_kluisscherm(
-                    mode=mode,
-                    lux=lux,
-                    temp_c=temp_c,
-                    digit=digit,
-                    pin_so_far=pin_so_far,
-                    loitering=loitering,
-                    reason=reason,
-                    voice_passphrase=VOICE_PASSPHRASE,
-                    alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
-                    toon_fout=toon_fout,
-                    pogingen_over=pogingen_over,
-                    wachttijd_s=wachttijd_s,
-                    afstand_cm=afstand_cm
-                )
+            display.toon_kluisscherm(
+                mode=mode,
+                lux=lux,
+                temp_c=temp_c,
+                digit=digit,
+                pin_so_far=pin_so_far,
+                loitering=loitering,
+                reason=reason,
+                voice_passphrase=VOICE_PASSPHRASE,
+                alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
+                toon_fout=toon_fout,
+                pogingen_over=pogingen_over,
+                wachttijd_s=wachttijd_s,
+                afstand_cm=afstand_cm
+            )
 
         except Exception as e:
             print(f"[FOUT in Sensor/OLED Thread]: {e}")
@@ -483,7 +477,7 @@ def thread_cloud():
         if lockout_alert:
             notificaties.stuur_push(
                 f"SMART VAULT: {MAX_PIN_ATTEMPTS}x foute pincode. "
-                f"Kluis {PIN_LOCKOUT_S // 60} minuten geblokkeerd."
+                f"Kluis {PIN_LOCKOUT_S} seconden geblokkeerd."
             )
 
         # Stuur smartphone-melding bij een Alarm (Brand, Inbraak of Loitering)

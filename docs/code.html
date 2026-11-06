@@ -37,10 +37,10 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
     <table>
       <thead><tr><th>Bestand</th><th>Rol</th><th>Belangrijkste libraries</th></tr></thead>
       <tbody>
-        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>board</code>, <code>busio</code>, <code>digitalio</code></td></tr>
+        <tr><td><code>main.py</code></td><td>Entry point, state machine en alle threads</td><td><code>threading</code>, <code>board</code>, <code>digitalio</code></td></tr>
         <tr><td><code>vault_state.py</code></td><td>Drempelwaarden, pincode en gedeelde status (<code>VaultState</code>)</td><td><code>threading</code></td></tr>
         <tr><td><code>sensors.py</code></td><td>Potmeter, LM35 (via MCP3008) en BH1750</td><td><code>board</code>, <code>busio</code>, <code>digitalio</code>, <code>adafruit_mcp3xxx</code></td></tr>
-        <tr><td><code>display.py</code></td><td>SSD1306 OLED-schermen over SPI</td><td><code>adafruit_ssd1306</code>, <code>Pillow</code></td></tr>
+        <tr><td><code>display.py</code></td><td>SSD1306 OLED-schermen over SPI1; beheert standaard de eigen bus</td><td><code>busio</code>, <code>adafruit_ssd1306</code>, <code>Pillow</code></td></tr>
         <tr><td><code>vault_lock.py</code></td><td>Relais-interlock en 28BYJ-48 stappenmotor</td><td><code>board</code>, <code>digitalio</code></td></tr>
         <tr><td><code>zwaailicht.py</code></td><td>RGB-led met PWM, statuskleuren en rood/uit-knipperlicht</td><td><code>gpiozero</code> (<code>RGBLED</code>)</td></tr>
         <tr><td><code>voice.py</code></td><td>Offline spraakherkenning (factor 2)</td><td><code>vosk</code>, <code>sounddevice</code></td></tr>
@@ -77,8 +77,8 @@ knop / potmeter / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main
     </table>
     <p>Alle threads delen één <code>VaultState</code>. Wijzigingen gebeuren onder
       <code>state.lock</code>. De ADC gebruikt SPI0 en de OLED SPI1, met aparte
-      klok- en datadraden. De transacties gebeuren onder
-      <code>state.spi_lock</code>.</p>
+      klok- en datadraden. Beide worden na elkaar aangestuurd door dezelfde
+      sensor-/displaythread.</p>
 
     <h2 id="state-machine">State machine</h2>
     <table>

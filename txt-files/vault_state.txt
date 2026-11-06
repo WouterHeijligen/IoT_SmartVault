@@ -83,6 +83,7 @@ PERIMETER_STALE_S = 10.0         # Afstandsmeting ouder dan dit wordt genegeerd 
 
 # De gratis versie van ThingSpeak staat maximaal 1 bericht per 15 seconden toe.
 TELEMETRY_INTERVAL_S = 15.0      # ThingSpeak-limiet: minstens 15 s tussen updates
+ALARM_PUSH_INTERVAL_S = 120.0    # Minstens 2 minuten tussen alarmpushmeldingen
 
 # De 5 mogelijke toestanden (states) waarin onze kluis kan zitten:
 # 0 = PIN_INPUT (Op slot), 1 = VOICE_2FA (Spraak), 2 = UNLOCKED (Open), 3 = ALARM, 4 = LOCKOUT (Geblokkeerd)
@@ -104,7 +105,6 @@ class VaultState:
         Zet alle variabelen klaar met hun veilige startwaarde (kluis op slot).
         """
         self.lock = threading.Lock()
-        self.spi_lock = threading.Lock()  # Voorkomt gelijktijdige SPI-toegang tussen ADC en OLED
         self.running = True
         self.mode = "PIN_INPUT"
         self.current_digit = 0

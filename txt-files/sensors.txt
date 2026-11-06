@@ -67,8 +67,6 @@ class Sensors:
         time.sleep(0.2)
 
         # --- 2. SPI-bus klaarmaken voor de MCP3008 (ADC-chip) ---
-        # Let op: ook het OLED-scherm gebruikt deze SPI-bus! Daarom geeft `main.py`
-        # deze `self.spi` straks ook door aan het Display-object.
         self.spi = busio.SPI(
             clock=board.SCK,
             MISO=board.MISO,
