@@ -1,0 +1,37 @@
+Smart Vault | Development
+Source: docs\development.html
+
+# Documentation and development
+
+## Source layout
+
+main.py runs the vault state machine in five threads (button, sensors and OLED, actuators, cloud, voice). Supporting modules: vault_state.py (configuration and shared state), sensors.py (potentiometer, LM35, BH1750), display.py (OLED screens), zwaailicht.py (RGB LED and red/off warning blink), vault_lock.py (relay and stepper), mqtt_client.py (ThingSpeak telemetry and the local perimeter subscriber), notificaties.py (ntfy push and siren). voice.py runs Vosk speech recognition for the second factor (model-en/ by default; model-nl/ is available). See the Code page (code.html) for a full walkthrough.
+
+## Edit and preview the site
+
+The site is plain HTML and CSS in docs/: no theme, generator, or package installation is required. Use relative links so the site works under the repository's GitHub Pages URL.
+
+From the repository root:
+
+python -m unittest discover -s tests -p "test_documentation.py"
+python -m http.server 8000 --bind 127.0.0.1 --directory docs
+
+Open http://127.0.0.1:8000 to preview. Stop the server with Ctrl+C. The checks verify page metadata, local links, fragment targets, and image/style references without accessing GPIO or connecting to ThingSpeak.
+
+## Publishing with GitHub Actions
+
+1. In the repository settings, open Pages and set Build and deployment / Source to GitHub Actions. A repository administrator must do this once.
+
+2. Open a pull request targeting master. The Documentation workflow checks the site and packages a Pages artifact; it does not publish the PR or provide a hosted preview.
+
+3. Merging into or pushing to master runs the same checks and deploys the artifact to the github-pages environment.
+
+Do not select Deploy from a branch: that also runs GitHub's generated pages build and deployment workflow, whose action versions are not controlled by this repository. Keep GitHub Actions selected so the maintained .github/workflows/pages.yml is the only publisher and its Node.js runtimes can be updated here.
+
+After the first successful deployment, the site should be available at wouterheijligen.github.io/IoT_SmartVault/ (https://wouterheijligen.github.io/IoT_SmartVault/). The deployment job reports the actual URL. A manual run is also available in Actions; only a run on master can publish.
+
+Pull requests run with read-only repository permissions. Only the deployment job requests Pages write access and an identity token. If the github-pages environment has branch restrictions, allow master; any configured approval rules still apply.
+
+## Keeping the wiring documentation current
+
+Edit docs/assets/connection-schema.drawio using draw.io / diagrams.net and export the matching PNG to docs/assets/connection-schema.png. Update the hardware table when GPIO assignments change. Keep the remaining differences documented until the diagram, code, and physical wiring have all been reconciled.

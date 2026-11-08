@@ -1,0 +1,150 @@
+Smart Vault | Code uitgelegd
+Source: docs\code.html
+
+# Code uitgelegd
+
+Deze pagina beschrijft hoe de software in elkaar zit: de modules, de gebruikte libraries, de threads en de beveiligingslogica. Elke functie heeft daarnaast een uitgebreide docstring in de broncode.
+
+## Overzicht
+
+De Raspberry Pi 5 draait main.py: een multithreaded state machine. Een Raspberry Pi Pico 2 W meet de afstand voor de kluis en stuurt die via MQTT naar een Mosquitto-broker op de Pi. De Pi pusht alarmen naar ntfy en telemetrie naar ThingSpeak.
+
+Pico 2 W (RCWL-9610A) --MQTT--> Mosquitto (Pi :1883) --> PerimeterListener
+|
+knop / potmeter / LM35 / BH1750 / microfoon --> VaultState <--+--> main.py threads
+|
+OLED, RGB-zwaailicht, relais + stappenmotor, speaker <+--> ThingSpeak, ntfy
+
+## Modules
+
+Bestand | Rol | Belangrijkste libraries
+
+main.py | Entry point, state machine en alle threads | threading, board, digitalio
+
+vault_state.py | Drempelwaarden, pincode en gedeelde status (VaultState) | threading
+
+sensors.py | Potmeter, LM35 (via MCP3008) en BH1750 | board, busio, digitalio, adafruit_mcp3xxx
+
+display.py | SSD1306 OLED-schermen over SPI1; beheert standaard de eigen bus | busio, adafruit_ssd1306, Pillow
+
+vault_lock.py | Relais-interlock en 28BYJ-48 stappenmotor | board, digitalio
+
+zwaailicht.py | RGB-led met PWM, statuskleuren en rood/uit-knipperlicht | gpiozero (RGBLED)
+
+voice.py | Offline spraakherkenning (factor 2) | vosk, sounddevice
+
+mqtt_client.py | ThingSpeak-publicatie en lokale perimeter-subscriber | paho-mqtt, python-dotenv
+
+notificaties.py | ntfy push, sirene (pw-play) en Bluetooth-verbinding | requests, subprocess
+
+pico_2w/code.py | Firmware van de perimeter-node | adafruit_hcsr04, adafruit_minimqtt, wifi
+
+## Gebruikte libraries (requirements.txt)
+
+- digitalio via Adafruit Blinka: knop met pull-up, active-low relais en digitale motorspoelen.
+
+- gpiozero: RGBLED(pwm=True) voor de RGB-led; PWM-uitvoering en timing hangen af van de pinbackend. Software-PWM kan jitter vertonen.
+
+- adafruit-blinka: levert board, busio en digitalio zodat CircuitPython-drivers op de Pi draaien (SPI, I2C, chip-select).
+
+- adafruit-circuitpython-mcp3xxx: driver voor de MCP3008 ADC (AnalogIn geeft 16-bit waarden).
+
+- adafruit-circuitpython-ssd1306 en Pillow: OLED-driver en tekenen van tekst/vormen in een beeldbuffer.
+
+- paho-mqtt: MQTT-client voor ThingSpeak en de lokale broker (callback API versie 2).
+
+- requests: HTTPS POST naar ntfy.sh.
+
+- python-dotenv: leest geheimen uit .env (niet in Git).
+
+- vosk en sounddevice: offline spraakherkenning en audio-opname van de USB-microfoon.
+
+- Systeemtools: pw-play (PipeWire) voor de sirene en bluetoothctl voor de speaker; mosquitto als lokale broker.
+
+## Threads in main.py
+
+Thread | Frequentie | Taak
+
+Button | 50 Hz | Flankdetectie met debounce. Bij modus PIN_INPUT wordt het huidige cijfer toegevoegd; na 3 cijfers wordt de code vergeleken. In ALARM of UNLOCKED reset de knop naar PIN_INPUT; in LOCKOUT doet hij niets.
+
+Sensors-OLED | 10 Hz | Leest potmeter (met hysterese), LM35 (mediaan van 5) en BH1750; beoordeelt brand, sabotage en loitering; ververst de OLED.
+
+Actuators | ~30 Hz | Voert motorbewegingen uit, stuurt het zwaailicht en speelt de sirene af volgens de modus.
+
+Cloud | 2 Hz, telemetrie elke 15 s | Stuurt ntfy-pushes (alarm, lockout) en ThingSpeak-telemetrie.
+
+Voice | continu, enkel in VOICE_2FA | Laadt Vosk bij het starten en luistert 20 s naar de passphrase. Alleen actief als BYPASS_VOICE_2FA=False.
+
+Alle threads delen één VaultState. Wijzigingen gebeuren onder state.lock. De ADC gebruikt SPI0 en de OLED SPI1, met aparte klok- en datadraden. Beide worden na elkaar aangestuurd door dezelfde sensor-/displaythread.
+
+## State machine
+
+Modus | Wanneer | Uitgang
+
+PIN_INPUT | Start, na reset of na lockout | Blauw licht, motor stroomloos; draaiknop kiest cijfer 0-9, knop bevestigt
+
+VOICE_2FA | Juiste code (bypass uit) | Oranje licht; Vosk luistert 20 s naar de passphrase, daarna terug naar PIN_INPUT
+
+UNLOCKED | Beide factoren juist | Groen licht; relais aan, stappenmotor opent
+
+ALARM | Brand, sabotage of loitering | Rood/uit-knipperlicht, sirene, ntfy-push; knop reset
+
+LOCKOUT | 3 foute codes | Zacht rood, 5 minuten wachttijd, push en sirene
+
+## Beveiligingslogica
+
+- Potmeter naar cijfer: 10-bit waarde (raw >> 6) wordt in 10 zones gedeeld. Een cijfer wisselt pas als de waarde minstens 12 tellen voorbij de zonegrens zit (hysterese), tegen flikkeren.
+
+- Brand: mediaan van 5 LM35-metingen filtert pieken; pas na 10 opeenvolgende metingen boven de drempel gaat het alarm af. Tijdens motorbewegingen wordt genegeerd omdat de voeding dan schommelt.
+
+- Sabotage: licht boven de drempel terwijl de kluis gesloten is.
+
+- Loitering: afstand onder 40 cm (Pico) gedurende 60 s zonder draaiknop of knop. Metingen ouder dan 10 s tellen niet (Pico offline).
+
+- Foute code: 3 pogingen, 3 s rood knipperen per fout, dan 300 s lockout.
+
+- Motor-interlock: het relais (active-low, GPIO 24) schakelt de 5 V naar de ULN2003 en staat standaard open; de motor krijgt alleen spanning tijdens een beweging.
+
+- Veilige afsluiting: na een onderbroken opening wordt de kluis bij reset altijd gesloten (lock_executed).
+
+## Hardware-aansturing
+
+- MCP3008: SPI0, CS GPIO 25; kanaal 0 = potmeter, kanaal 1 = LM35 (10 mV per graad).
+
+- Alarmpush: direct bij het eerste alarm, daarna maximaal elke 2 minuten zolang ALARM actief blijft. Een reset wist de wachttijd niet. Instelbaar via ALARM_PUSH_INTERVAL_S; sirene en lockoutmeldingen blijven ongewijzigd.
+
+- BH1750: I2C 0x23; één keer in continue hoge-resolutiemodus gezet (commando 0x10), daarna alleen gelezen. Lux = ruwe waarde / 1,2.
+
+- OLED: SSD1306 128x64 op SPI1: SCLK GPIO21 (fysieke pin 40), MOSI GPIO20 (pin 38), RST GPIO16 en DC GPIO6. Geen CS of MISO aangesloten. Bovenaan staan L: lux, T: temperatuur en A: afstand. Zie de aansluitingen (hardware.html) en SPI1-configuratie (setup.html#spi1).
+
+- Stappenmotor: 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 3072 stappen, 10 ms per stap (ongeveer 31 s). Openen gebruikt de omgekeerde sequentie (vooruit=False), sluiten de normale (vooruit=True).
+
+- Zwaailicht: RGB op GPIO 12/13/26 via PWM; bij een foute code en bij alarm knippert de LED eenvoudig rood/uit met dezelfde functie.
+
+## Netwerk en cloud
+
+- Perimeter: de Pico 2 W publiceert elke 0,5 s de afstand op vault/perimeter/distance; PerimeterListener abonneert op de Mosquitto-broker (127.0.0.1:1883) en roept on_perimeter_afstand() aan.
+
+- ThingSpeak: MQTT-publicatie op channels/<id>/publish met veld 1 lux, 2 temperatuur, 3 afstand, 4 modus-code (0-4), minstens 15 s tussen updates. Gegevens komen uit .env.
+
+- ntfy: HTTP POST naar https://ntfy.sh/<topic> met hoge prioriteit.
+
+- Audio: sirene() speelt sirene.wav af met pw-play (zonder overlap); onder sudo gebeurt dat als de oorspronkelijke gebruiker. Een thread houdt de Bluetooth-speaker verbonden (BT_SPEAKER_MAC).
+
+## Pico 2 W firmware
+
+pico_2w/code.py (CircuitPython) maakt wifi-verbinding, meet met adafruit_hcsr04 (trigger GP27, echo GP28) en publiceert met adafruit_minimqtt. Verbinding en broker komen uit settings.toml; bij uitval wordt opnieuw verbonden.
+
+## Demo-vragen om op te oefenen
+
+- Waarom een mediaan en een bevestigingsteller voor de brandmelding?
+
+- Waarom gebruiken we een relais in serie met de motorvoeding?
+
+- Welke signalen gebruikt de OLED op SPI1 en welke gebruikt de ADC op SPI0?
+
+- Wat gebeurt er als de Pico offline gaat? (afstand wordt na 10 s als verouderd genegeerd)
+
+- Waarom werkt de sirene niet onder sudo zonder aanpassing? (PipeWire-sessie van de gebruiker)
+
+- Hoe voorkomt de hysterese dat het cijfer flikkert?

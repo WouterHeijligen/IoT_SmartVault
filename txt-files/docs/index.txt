@@ -1,0 +1,50 @@
+Smart Vault | Overview
+Source: docs\index.html
+
+IoT Essentials / Team project
+
+# A connected vault, built one component at a time.
+
+Smart Vault is a Raspberry Pi prototype exploring sensor monitoring, physical control, and cloud telemetry. The intended design combines a rotary code input, spoken verification, and tamper detection. It is an educational prototype, not a production security system.
+
+Work in progress. These pages distinguish the current source code from the planned design. The latest connection diagram is included; remaining code/wiring differences are listed on the hardware page.
+
+## Application flow
+
+main.py starts four threads that share one state object (vault_state.py), plus a subscriber for the Pico perimeter distance.
+
+1. Code entry: turn the potentiometer to pick a digit (0-9) and press the button on GPIO 4 to confirm it. Three digits form the PIN.
+
+2. Correct PIN: the relay powers the stepper, the lock opens, the LED turns green and the relay switches off again. Pressing the button closes the vault. With BYPASS_VOICE_2FA = False the vault first waits for a spoken passphrase (not implemented yet).
+
+3. Wrong PIN: the OLED shows how many attempts remain and the LED runs the zwaailicht for 3 seconds. After 3 wrong codes the vault is locked for 5 minutes, plays a short siren and sends one ntfy push notification.
+
+4. Alarm: a temperature above the fire threshold, or light inside a closed vault, starts the alarm: zwaailicht, a repeating siren and a push notification. The button resets it.
+
+5. Telemetry: every 15 seconds light, temperature, perimeter distance and vault status are published to ThingSpeak.
+
+The LED blinks red/off for both an incorrect PIN and an alarm. Thresholds are test values (light 5000 lux, temperature 25 °C) and are set in vault_state.py.
+
+## Implementation status
+
+Component | Current source
+
+Sensors | LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.
+
+Display and indicator | SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with zwaailicht effect. The ADC stays on SPI0.
+
+Code entry | 3-digit potentiometer PIN with retry counter and 5 minute lockout.
+
+Lock mechanism | Relay interlock and stepper driven by the vault state.
+
+Alarms | Fire and tamper (light) detection, siren and ntfy push notification.
+
+ThingSpeak | MQTT telemetry using credentials from .env.
+
+Pico perimeter node | CircuitPython firmware in pico_2w/ publishes the RCWL-9610A distance to vault/perimeter/distance; the Pi subscribes on a local broker.
+
+Voice recognition | Placeholder class; second factor is bypassed by default.
+
+## Where to start
+
+Review the code-derived pin map and connection diagram (hardware.html), follow the Raspberry Pi setup (setup.html), or read how to update and publish these pages (development.html).

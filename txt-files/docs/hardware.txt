@@ -1,0 +1,95 @@
+Smart Vault | Hardware
+Source: docs\hardware.html
+
+# Hardware and connections
+
+Latest diagram, with differences still to reconcile. The diagram below is the 6 November 2026 update from the team project folder. The table records the current Python configuration, not a physical inspection. Verify component datasheets, voltage levels, and wiring before powering the circuit.
+
+## Pin map from the current code
+
+GPIO numbers use BCM numbering, not physical header positions. The OLED uses SPI1 and the MCP3008 uses SPI0: they no longer share clock/data wires. Only the MCP3008 has a GPIO chip-select because this OLED module has no CS pin.
+
+Device / signal | BCM GPIO or channel | Source module
+
+Button, active-low with pull-up | 4 | main.py
+
+MCP3008 SPI0 clock / MOSI / MISO | 11 / 10 / 9 | sensors.py
+
+MCP3008 chip select | 25 | sensors.py
+
+Potentiometer wiper | MCP3008 CH0 | sensors.py
+
+LM35 output | MCP3008 CH1 | sensors.py
+
+BH1750 SDA / SCL | 2 / 3, I2C address 0x23 | sensors.py
+
+SSD1306 reset / data-command | 16 / 6, SPI, 128 x 64; module heeft geen CS | display.py
+
+SSD1306 SPI1 clock (SCL) / data (SDA) | 21 / 20 (physical pins 40 / 38); no MISO connection | main.py, display.py
+
+RGB LED red / green / blue | 12 / 13 / 26, PWM | zwaailicht.py
+
+Relay control, active-low | 24 | vault_lock.py
+
+Stepper driver IN1 / IN2 / IN3 / IN4 | 17 / 27 / 22 / 23 | vault_lock.py
+
+## OLED connections (SPI1)
+
+The SSD1306 is a six-pin SPI module without a CS connection:
+
+OLED label | Pi signal | Physical header pin
+
+VCC | 3.3 V | 1 or 17 (3.3 V rail)
+
+GND | Ground | For example 6 (common ground rail)
+
+RES / RST | GPIO 16 | 36
+
+DC | GPIO 6 | 31
+
+SDA / DIN (data) | GPIO 20 / MOSI1 | 38
+
+SCL / CLK (clock) | GPIO 21 / SCLK1 | 40
+
+The OLED uses no MISO wire. Its SDA and SCL labels refer to SPI data and clock, not I2C. The MCP3008 uses SPI0 (GPIO 11/10/9, CS 25).
+
+Display() opens SPI1 with busio.SPI(clock=board.D21, MOSI=board.D20). The application, root preflight and standalone display test use this same default. Display.close() releases a bus created by the display; an explicitly supplied SPI bus remains owned by its caller. SPI1 configuration is described in the setup notes (setup.html#spi1).
+
+## Pico 2 W perimeter node
+
+A separate Raspberry Pi Pico 2 W runs CircuitPython and measures distance with an RCWL-9610A sonar in trigger/echo mode. It publishes the distance in cm to the MQTT broker on the Pi (topic vault/perimeter/distance). Numbers below are physical pin numbers of the Pico. Firmware and install notes are in pico_2w/.
+
+Sonar pin | Pico 2 W pin
+
+VCC | 36 (3V3 OUT)
+
+GND | 38
+
+TRIG | 32 (GP27)
+
+ECHO | 34 (GP28)
+
+On 3.3 V the echo signal is 3.3 V, so no level shifting is needed. If the sensor is powered from 5 V (pin 40), add a 1 kΩ / 2 kΩ divider on ECHO.
+
+## Known diagram differences
+
+- The updated MCP3008 chip-select connection uses GPIO 25, matching the code. The central SPI bus list still mentions GPIO 8 / CE0.
+
+- The OLED edges show GPIO 20 and 21, matching the current connections. However, GPIO 21 is SCLK1, not MISO. The OLED module's text incorrectly mentions MOSI and MISO; it uses MOSI and SCLK, without a MISO wire. Its 0x3C label is an I2C address, not an SPI address.
+
+- The BH1750 SCL edge says GPIO 11 but also physical pin 5. Physical pin 5 is GPIO 3 / SCL1, matching sensors.py; GPIO 11 is the ADC's SPI0 clock. Do not wire BH1750 SCL to GPIO 11.
+
+- The diagram uses GPIO 19 for the blue LED; the code uses GPIO 26.
+
+- The Pico section of the diagram shows an HC-SR04 and may use other pins; the Pico firmware in pico_2w/ uses an RCWL-9610A on GP27 / GP28 as listed above.
+
+## Latest connection diagram
+
+Open the full-size diagram (assets/connection-schema.png) or download its editable draw.io source (assets/connection-schema.drawio). Both files were copied from the latest team project schema; update them together after reviewing the wiring.
+
+[Image: Latest Smart Vault connection diagram showing the Pico perimeter node, Pi sensors, display, relay, stepper, and RGB LED. See the differences above before using it as a wiring reference.]  (assets/connection-schema.png)
+Updated 6 November 2026. XML labels and the PNG were reviewed; physical wiring has not been independently verified. See the remaining differences above.
+
+## Electrical checks still required
+
+Use 3.3 V-compatible GPIO signals and verify the MCP3008 supply/reference, sensor supply requirements, common ground, and LED resistors against the actual components. In particular, verify the diagram's 3.3 V LM35 supply label against the exact sensor's rated supply range. Motors must use a suitable driver, not GPIO power. The Pico sonar is powered from 3.3 V; at 5 V its echo signal needs a voltage divider.
