@@ -56,41 +56,91 @@
       apart vermeld. Haal de spanning eraf voordat je bedrading aanpast. Het
       diagram is een leidraad, geen bevestiging van de fysieke opstelling.</p>
     <h3 id="pi5">Raspberry Pi 5 en T-Cobbler</h3>
-    <p>De Pi 5 draait de hoofdapplicatie. De T-Cobbler brengt de 40-pins header
-      naar het breadboard. Gebruik pin 1 of 17 voor de 3,3V-rail, pin 2 of 4
-      voor de 5V-rail en een gemeenschappelijke massa, bijvoorbeeld pin 6.
-      Sluit nooit 5 V aan op een GPIO-pin.</p>
+    <div class="table-scroll">
+      <table id="connections-pi5">
+        <thead><tr><th>Aansluiting</th><th>Pi- / breadboardaansluiting</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>T-Cobbler</td><td>40-pins Pi-header naar breadboard</td><td>Passieve adapter voor de Pi-header.</td></tr>
+          <tr><td>3,3V-rail</td><td>Fysieke pin 1 of 17</td><td>Voeding voor sensoren en logica volgens de specificatie.</td></tr>
+          <tr><td>5V-rail</td><td>Fysieke pin 2 of 4</td><td>Alleen voor geschikte onderdelen; nooit 5 V op een GPIO aansluiten.</td></tr>
+          <tr><td>Massa-rail</td><td>Gemeenschappelijke massa, bijvoorbeeld pin 6</td><td>Deel massa tussen Pi, sensoren en aangestuurde modules.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a> (applicatie; T-Cobbler en voedingsrails zijn passief)</td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="bh1750">BH1750-lichtsensor</h3>
-    <p>Verbind VCC met 3,3 V en GND met de gemeenschappelijke massa. SDA gaat
-      naar GPIO 2 (fysieke pin 3); SCL gaat naar GPIO 3 (pin 5). Het I2C-adres
-      is <code>0x23</code>. Laat ADDR open of verbind deze met GND voor dat adres.
-      De code leest digitale luxwaarden via I2C.</p>
+    <div class="table-scroll">
+      <table id="connections-bh1750">
+        <thead><tr><th>Sensorpin</th><th>Pi-aansluiting</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>3,3V-rail</td><td>Voedingsspanning.</td></tr>
+          <tr><td>GND</td><td>Gemeenschappelijke massa</td><td>Gedeeld met de Pi.</td></tr>
+          <tr><td>SDA</td><td>GPIO 2, fysieke pin 3</td><td>I2C-data.</td></tr>
+          <tr><td>SCL</td><td>GPIO 3, fysieke pin 5</td><td>I2C-klok.</td></tr>
+          <tr><td>ADDR</td><td>Open laten of met GND verbinden</td><td>I2C-adres <code>0x23</code>.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="mcp3008">MCP3008 analoog-digitaalconverter</h3>
-    <p>Verbind VDD en VREF met 3,3 V en AGND en DGND met massa. Verbind CLK met
-      GPIO 11 (fysieke pin 23), DOUT met GPIO 9 (pin 21), DIN met GPIO 10
-      (pin 19) en CS/SHDN met GPIO 25 (pin 22). De code stuurt CS handmatig aan.
-      CH0 leest de potentiometer; CH1 leest de LM35.</p>
+    <div class="table-scroll">
+      <table id="connections-mcp3008">
+        <thead><tr><th>ADC-pin</th><th>Pi- / sensoraansluiting</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VDD, VREF</td><td>3,3V-rail</td><td>Logica en referentiespanning.</td></tr>
+          <tr><td>AGND, DGND</td><td>Gemeenschappelijke massa</td><td>Verbind beide massa-aansluitingen met de gedeelde massa.</td></tr>
+          <tr><td>CLK</td><td>GPIO 11, fysieke pin 23</td><td>SPI0-klok.</td></tr>
+          <tr><td>DOUT</td><td>GPIO 9, fysieke pin 21</td><td>SPI0 MISO, ADC naar Pi.</td></tr>
+          <tr><td>DIN</td><td>GPIO 10, fysieke pin 19</td><td>SPI0 MOSI, Pi naar ADC.</td></tr>
+          <tr><td>CS/SHDN</td><td>GPIO 25, fysieke pin 22</td><td>Chipselect wordt handmatig door de code aangestuurd.</td></tr>
+          <tr><td>CH0</td><td>Wiper van de potentiometer</td><td>Invoer voor cijferselectie.</td></tr>
+          <tr><td>CH1</td><td>LM35 Vout</td><td>Temperatuurinvoer.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="potentiometer">Potentiometer van 10 kΩ</h3>
-    <p>Verbind de buitenste aansluitingen met massa en 3,3 V; verbind de wiper
-      (middelste aansluiting) met MCP3008 CH0. Door te draaien selecteer je een
-      cijfer. De code gebruikt een kleine hysteresezone om flikkeren bij
-      cijfergrenzen te beperken.</p>
+    <div class="table-scroll">
+      <table id="connections-potentiometer">
+        <thead><tr><th>Aansluiting potentiometer</th><th>Verbinden met</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Buitenste aansluiting 1</td><td>Massa</td><td>Een uiteinde van het spanningsbereik.</td></tr>
+          <tr><td>Buitenste aansluiting 2</td><td>3,3 V</td><td>Het andere uiteinde van het spanningsbereik.</td></tr>
+          <tr><td>Wiper (middelste aansluiting)</td><td>MCP3008 CH0</td><td>Draaien selecteert een cijfer; hysterese beperkt flikkeren rond cijfergrenzen.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a> en <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="lm35">LM35-temperatuursensor</h3>
-    <p>De 3,3V-voeding is voor de geselecteerde sensor geverifieerd. Verbind GND
-      met gemeenschappelijke massa en Vout met MCP3008 CH1. De applicatie zet
-      de analoge meting om volgens de LM35-schaal in de code. Controleer de
-      pinvolgorde van de gebruikte behuizing voordat je deze aansluit.</p>
+    <div class="table-scroll">
+      <table id="connections-lm35">
+        <thead><tr><th>LM35-pin</th><th>Verbinden met</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Vs</td><td>3,3V-rail</td><td>De 3,3V-voeding van de geselecteerde sensor is geverifieerd.</td></tr>
+          <tr><td>GND</td><td>Gemeenschappelijke massa</td><td>Gedeeld met de ADC en Pi.</td></tr>
+          <tr><td>Vout</td><td>MCP3008 CH1</td><td>Analoge temperatuursignaal; controleer de pinvolgorde van de gebruikte behuizing.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a> en <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="button">Bevestigingsknop voor de pincode</h3>
-    <p>Verbind één kant van de knop met GPIO 4 (fysieke pin 7) en de andere
-      kant met massa. De applicatie activeert een interne pull-up; de ingang
-      is daarom actief-laag: losgelaten is hoog, ingedrukt is laag.</p>
+    <div class="table-scroll">
+      <table id="connections-button">
+        <thead><tr><th>Aansluiting knop</th><th>Pi-aansluiting</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Aansluiting 1</td><td>GPIO 4, fysieke pin 7</td><td>Ingang gebruikt de interne pull-up van de Pi.</td></tr>
+          <tr><td>Aansluiting 2</td><td>Massa</td><td>Ingedrukt is laag; losgelaten is hoog.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
 
     <h2 id="oled">OLED-aansluitingen (SPI1)</h2>
     <p>De SSD1306 is een SPI-module met zes pinnen en zonder CS-aansluiting.
       De labels SDA en SCL op de module betekenen hier SPI-data en SPI-klok,
       niet I2C. Er is geen MISO-aansluiting of I2C-adres voor deze SPI-verbinding.</p>
     <div class="table-scroll">
-      <table>
+      <table id="connections-oled">
         <thead><tr><th>OLED-label</th><th>Pi-signaal</th><th>Fysieke headerpin</th></tr></thead>
         <tbody>
           <tr><td>VCC</td><td>3,3 V</td><td>1 of 17</td></tr>
@@ -99,6 +149,7 @@
           <tr><td>DC</td><td>GPIO 6</td><td>31</td></tr>
           <tr><td>SDA / DIN (data)</td><td>GPIO 20 / MOSI1</td><td>38</td></tr>
           <tr><td>SCL / CLK (klok)</td><td>GPIO 21 / SCLK1</td><td>40</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/display.py"><code>display.py</code></a> en <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
         </tbody>
       </table>
     </div>
@@ -113,6 +164,18 @@
       De firmware gebruikt GP27 voor TRIG en GP28 voor ECHO; die signalen komen
       overeen met fysieke pinnen 32 en 34. De beoogde voeding volgens de
       projectdocumentatie is 3,3 V op pin 36 en GND op pin 38.</p>
+    <div class="table-scroll">
+      <table id="connections-pico-node">
+        <thead><tr><th>Sonarpin</th><th>Pico 2 W-aansluiting</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>36 (3V3 OUT)</td></tr>
+          <tr><td>GND</td><td>38</td></tr>
+          <tr><td>TRIG</td><td>32 (GP27)</td></tr>
+          <tr><td>ECHO</td><td>34 (GP28)</td></tr>
+          <tr><th scope="row">Codereferentie</th><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/pico_2w/code.py"><code>pico_2w/code.py</code></a> en <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/mqtt_client.py"><code>mqtt_client.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <p>De Pico publiceert afstand via Wi-Fi en MQTT naar
       <code>vault/perimeter/distance</code>. Controleer de spanningsniveaus van
       de exacte sonarmodule. Een 5V-ECHO-signaal mag niet rechtstreeks naar een
@@ -120,27 +183,55 @@
 
     <h2 id="actuators">Actuatoren en indicatoren</h2>
     <h3 id="relay">5V-relaismodule</h3>
-    <p>Sluit VCC van de relaimodule aan op 5 V en GND op de gemeenschappelijke massa. De IN-ingang
-      gaat naar GPIO 24 (fysieke pin 18) en is actief-laag: GPIO laag schakelt
-      het relais in. De getoonde contactbedrading voert 5 V van COM via NO
-      naar de motorvoeding van de stepperdriver. Controleer de ingangseisen en
-      contactwaarden van de gebruikte relaimodule.</p>
+    <div class="table-scroll">
+      <table id="connections-relay">
+        <thead><tr><th>Relaisaansluiting</th><th>Verbinden met</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>5V-rail</td><td>Controleer of de module deze voeding ondersteunt.</td></tr>
+          <tr><td>GND</td><td>Gemeenschappelijke massa</td><td>Gedeeld met de Pi en driver.</td></tr>
+          <tr><td>IN</td><td>GPIO 24, fysieke pin 18</td><td>Actief-laag: GPIO laag schakelt het relais in.</td></tr>
+          <tr><td>COM / NO</td><td>5V-motorvoedingspad</td><td>Het gedocumenteerde contact schakelt motorvoeding naar de stepperdriver; controleer de contactwaarden.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/vault_lock.py"><code>vault_lock.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="stepper">ULN2003-driver en 28BYJ-48-steppermotor</h3>
-    <p>Verbind ULN2003 IN1/IN2/IN3/IN4 met GPIO 17/27/22/23
-      (fysieke pinnen 11/13/15/16). Driver en motor gebruiken de geschakelde
-      5V-voeding vanaf relaiscontact NO en delen massa met de Pi. De ULN2003
-      stuurt de motorwikkelingen aan; sluit de motor niet rechtstreeks op GPIO aan.</p>
+    <div class="table-scroll">
+      <table id="connections-stepper">
+        <thead><tr><th>Driver- / motoraansluiting</th><th>Verbinden met</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>IN1 / IN2 / IN3 / IN4</td><td>GPIO 17 / 27 / 22 / 23 (fysieke pinnen 11 / 13 / 15 / 16)</td><td>Geordende spoelbesturingssignalen.</td></tr>
+          <tr><td>Motorvoeding</td><td>Geschakelde 5 V vanaf relais NO</td><td>Gebruik de driver; voed de motor niet vanaf GPIO.</td></tr>
+          <tr><td>Massa</td><td>Gemeenschappelijke massa</td><td>Gedeeld met de Pi en drivervoeding.</td></tr>
+          <tr><td>Motorfasen</td><td>28BYJ-48-connector naar ULN2003</td><td>Sluit motorwikkelingen niet rechtstreeks aan op Pi-pinnen.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/vault_lock.py"><code>vault_lock.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="rgb-led">RGB-statusled</h3>
-    <p>De beschreven LED is common-cathode: verbind de gemeenschappelijke
-      aansluiting met massa. Verbind rood, groen en blauw elk via een eigen
-      weerstand van 220 Ω met GPIO 12, 13 en 26 (fysieke pinnen 32, 33 en 37).
-      Controleer de pinvolgorde en de geschiktheid van de weerstanden voor de
-      gebruikte LED.</p>
+    <div class="table-scroll">
+      <table id="connections-rgb-led">
+        <thead><tr><th>LED-aansluiting</th><th>Verbinden met</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Gemeenschappelijke kathode</td><td>Massa</td><td>Gedocumenteerd LED-type; controleer het werkelijke onderdeel.</td></tr>
+          <tr><td>Rood</td><td>GPIO 12, fysieke pin 32, via 220Ω-weerstand</td><td>PWM-helderheidsregeling.</td></tr>
+          <tr><td>Groen</td><td>GPIO 13, fysieke pin 33, via 220Ω-weerstand</td><td>PWM-helderheidsregeling.</td></tr>
+          <tr><td>Blauw</td><td>GPIO 26, fysieke pin 37, via 220Ω-weerstand</td><td>PWM-helderheidsregeling.</td></tr>
+          <tr><th scope="row">Codereferentie</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/zwaailicht.py"><code>zwaailicht.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="audio">Microfoon en Bluetooth-speaker</h3>
-    <p>Deze randapparatuur is niet als GPIO-aansluiting in het schema opgenomen.
-      De USB-microfoon wordt gebruikt door het optionele Vosk-spraakpad; de
-      Bluetooth-speaker speelt audio-alarmen af. De tweede factor is standaard
-      overgeslagen in de huidige configuratie.</p>
+    <div class="table-scroll">
+      <table id="connections-audio">
+        <thead><tr><th>Randapparaat</th><th>Aansluiting</th><th>Codereferentie</th></tr></thead>
+        <tbody>
+          <tr><td>USB-microfoon</td><td>USB-audio-ingang; geen GPIO-aansluiting in het schema.</td><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/voice.py"><code>voice.py</code></a></td></tr>
+          <tr><td>Bluetooth-speaker</td><td>Gekoppeld via Bluetooth voor audio-alarmen.</td><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/notificaties.py"><code>notificaties.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>De tweede factor is standaard overgeslagen in de huidige configuratie.</p>
 
     <h2>Resterende verschillen in het diagram</h2>
     <ul>

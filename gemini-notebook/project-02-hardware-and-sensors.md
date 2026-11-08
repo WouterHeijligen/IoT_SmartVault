@@ -26,8 +26,11 @@ Use the diagram as a visual aid, but explicitly call out its documented
 differences from the current code and the fact that physical wiring has not
 been independently verified. Explain electrical safety limits and what still
 needs checking against component datasheets; do not give an unverified wiring
-instruction or assume GPIO can power a motor. End with a subsystem-by-subsystem
-verification checklist and a concise pin/bus summary.
+instruction or assume GPIO can power a motor. Use the per-component connection
+tables and their linked code references. For each device, name the source file
+that configures or reads it, and distinguish code configuration from proof of
+physical wiring. End with a subsystem-by-subsystem verification checklist and
+a concise pin/bus summary.
 
 Cite exact uploaded project source filenames/sections. Separate facts from
 inferences and flag anything the sources cannot establish.
@@ -44,7 +47,8 @@ button/LED, relay and stepper-driver roles, Pico sonar, and electrical safety.
 
 Include 8 component-function questions, 8 pin/bus interpretation questions,
 8 signal-path questions, 15 fault-finding scenarios, and 6 safety/design
-questions. Across the bus questions, test I2C addressing, SPI clock/data flow,
+questions. Ask learners to match each component to the relevant connection
+table and code file, not just to recite a pin number. Across the bus questions, test I2C addressing, SPI clock/data flow,
 the distinct roles of SPI0 and SPI1, and why the OLED's SDA/SCL silkscreen does
 not make this SPI connection I2C. Ask me to distinguish BCM from physical pins, SPI labels from I2C
 labels, and Pi pins from Pico pins. Do not rely on diagram details that the

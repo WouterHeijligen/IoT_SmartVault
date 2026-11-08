@@ -1,5 +1,6 @@
 from html.parser import HTMLParser
 from pathlib import Path
+import re
 import unittest
 from urllib.parse import unquote, urlsplit
 
@@ -130,11 +131,62 @@ class DocumentationTests(unittest.TestCase):
             "8 November 2026",
             "3.3 V supply for the selected LM35 has been verified",
         )
+        code_sources = (
+            "main.py",
+            "sensors.py",
+            "display.py",
+            "pico_2w/code.py",
+            "mqtt_client.py",
+            "vault_lock.py",
+            "zwaailicht.py",
+            "voice.py",
+            "notificaties.py",
+        )
         for path in (DOCS / "hardware.html", TEXT_DOCS / "hardware.txt"):
             with self.subTest(document=path.name):
                 text = path.read_text(encoding="utf-8")
                 for marker in expected:
                     self.assertIn(marker, text)
+                for source in code_sources:
+                    self.assertIn(
+                        f"blob/master/{source}",
+                        text,
+                        f"Missing code reference for {source}",
+                    )
+
+    def test_each_hardware_connection_table_links_its_code_reference(self):
+        table_sources = {
+            "connections-pi5": ("main.py",),
+            "connections-bh1750": ("sensors.py",),
+            "connections-mcp3008": ("sensors.py",),
+            "connections-potentiometer": ("sensors.py", "main.py"),
+            "connections-lm35": ("sensors.py", "main.py"),
+            "connections-button": ("main.py",),
+            "connections-oled": ("display.py", "main.py"),
+            "connections-pico-node": ("pico_2w/code.py", "mqtt_client.py"),
+            "connections-relay": ("vault_lock.py",),
+            "connections-stepper": ("vault_lock.py",),
+            "connections-rgb-led": ("zwaailicht.py",),
+            "connections-audio": ("voice.py", "notificaties.py"),
+        }
+        for path in (DOCS / "hardware.html", DOCS / "nl" / "hardware.html"):
+            text = path.read_text(encoding="utf-8")
+            page = Page(path)
+            for table_id, sources in table_sources.items():
+                with self.subTest(page=path, table=table_id):
+                    self.assertIn(table_id, page.ids)
+                    table = re.search(
+                        rf'<table id="{re.escape(table_id)}">(.*?)</table>',
+                        text,
+                        re.DOTALL,
+                    )
+                    self.assertIsNotNone(table, "Missing component connection table")
+                    for source in sources:
+                        reference = (
+                            "https://github.com/WouterHeijligen/"
+                            f"IoT_SmartVault/blob/master/{source}"
+                        )
+                        self.assertIn(reference, table.group(1))
 
 
 if __name__ == "__main__":

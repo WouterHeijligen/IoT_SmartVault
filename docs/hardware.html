@@ -56,37 +56,88 @@
       separately. Disconnect power before changing wiring. The diagram is a guide,
       not confirmation that the physical build matches it.</p>
     <h3 id="pi5">Raspberry Pi 5 and T-Cobbler</h3>
-    <p>The Pi 5 runs the main application. The T-Cobbler brings its 40-pin header
-      to the breadboard. Use the 3.3 V rail from physical pin 1 or 17, the 5 V
-      rail from pin 2 or 4, and a common ground (for example pin 6). Do not apply
-      5 V to a GPIO pin.</p>
+    <div class="table-scroll">
+      <table id="connections-pi5">
+        <thead><tr><th>Connection</th><th>Pi / breadboard connection</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>T-Cobbler</td><td>40-pin Pi header to breadboard</td><td>Passive adapter for the Pi header.</td></tr>
+          <tr><td>3.3 V rail</td><td>Physical pin 1 or 17</td><td>Sensor and logic supply where specified.</td></tr>
+          <tr><td>5 V rail</td><td>Physical pin 2 or 4</td><td>Use only for components designed for 5 V; never connect 5 V to a GPIO.</td></tr>
+          <tr><td>Ground rail</td><td>Common ground, for example pin 6</td><td>Share ground between the Pi, sensors, and driven modules.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a> (application; the Cobbler and power rails are passive)</td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="bh1750">BH1750 light sensor</h3>
-    <p>Connect VCC to 3.3 V and GND to common ground. SDA goes to GPIO 2
-      (physical pin 3); SCL goes to GPIO 3 (physical pin 5). The sensor uses I2C
-      address <code>0x23</code>. Its ADDR pin may be left open or tied low for
-      that address. The code reads digital lux values over I2C.</p>
+    <div class="table-scroll">
+      <table id="connections-bh1750">
+        <thead><tr><th>Sensor pin</th><th>Pi connection</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>3.3 V rail</td><td>Power supply.</td></tr>
+          <tr><td>GND</td><td>Common ground</td><td>Shared with the Pi.</td></tr>
+          <tr><td>SDA</td><td>GPIO 2, physical pin 3</td><td>I2C data.</td></tr>
+          <tr><td>SCL</td><td>GPIO 3, physical pin 5</td><td>I2C clock.</td></tr>
+          <tr><td>ADDR</td><td>Leave open or connect to GND</td><td>Uses I2C address <code>0x23</code>.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="mcp3008">MCP3008 analog-to-digital converter</h3>
-    <p>Connect VDD and VREF to 3.3 V, and AGND and DGND to common ground.
-      Connect CLK to GPIO 11 (physical pin 23), DOUT to GPIO 9 (pin 21),
-      DIN to GPIO 10 (pin 19), and CS/SHDN to GPIO 25 (pin 22). The code
-      controls CS manually. CH0 reads the potentiometer; CH1 reads the LM35.</p>
+    <div class="table-scroll">
+      <table id="connections-mcp3008">
+        <thead><tr><th>ADC pin</th><th>Pi / sensor connection</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VDD, VREF</td><td>3.3 V rail</td><td>Logic supply and reference.</td></tr>
+          <tr><td>AGND, DGND</td><td>Common ground</td><td>Connect both grounds to the shared ground.</td></tr>
+          <tr><td>CLK</td><td>GPIO 11, physical pin 23</td><td>SPI0 clock.</td></tr>
+          <tr><td>DOUT</td><td>GPIO 9, physical pin 21</td><td>SPI0 MISO, ADC to Pi.</td></tr>
+          <tr><td>DIN</td><td>GPIO 10, physical pin 19</td><td>SPI0 MOSI, Pi to ADC.</td></tr>
+          <tr><td>CS/SHDN</td><td>GPIO 25, physical pin 22</td><td>Chip-select is controlled manually by the code.</td></tr>
+          <tr><td>CH0</td><td>Potentiometer wiper</td><td>Digit selection input.</td></tr>
+          <tr><td>CH1</td><td>LM35 Vout</td><td>Temperature input.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="potentiometer">10 kΩ potentiometer</h3>
-    <p>Connect the two outer terminals to ground and 3.3 V; connect the wiper
-      (middle terminal) to MCP3008 CH0. Turning it selects a digit. The code
-      applies a small hysteresis band to reduce flicker near digit boundaries.</p>
+    <div class="table-scroll">
+      <table id="connections-potentiometer">
+        <thead><tr><th>Potentiometer connection</th><th>Connect to</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Outer terminal 1</td><td>Ground</td><td>One end of the voltage range.</td></tr>
+          <tr><td>Outer terminal 2</td><td>3.3 V</td><td>The other end of the voltage range.</td></tr>
+          <tr><td>Wiper (middle terminal)</td><td>MCP3008 CH0</td><td>Turning selects a digit; hysteresis reduces flicker near digit boundaries.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a> and <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="lm35">LM35 temperature sensor</h3>
-    <p>For the selected sensor, the 3.3 V supply has been verified. Connect GND
-      to common ground and Vout to MCP3008 CH1. The application converts the
-      analog reading using the LM35 scale documented in the code. Verify the
-      selected package's pin orientation before wiring.</p>
+    <div class="table-scroll">
+      <table id="connections-lm35">
+        <thead><tr><th>LM35 pin</th><th>Connect to</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Vs</td><td>3.3 V rail</td><td>The selected sensor's 3.3 V supply has been verified.</td></tr>
+          <tr><td>GND</td><td>Common ground</td><td>Shared with the ADC and Pi.</td></tr>
+          <tr><td>Vout</td><td>MCP3008 CH1</td><td>Analog temperature signal; verify the selected package's pin orientation.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/sensors.py"><code>sensors.py</code></a> and <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="button">PIN confirmation button</h3>
-    <p>Connect one side of the button to GPIO 4 (physical pin 7) and the other
-      to ground. The application enables an internal pull-up, so the input is
-      active-low: released reads high and pressed reads low.</p>
+    <div class="table-scroll">
+      <table id="connections-button">
+        <thead><tr><th>Button connection</th><th>Pi connection</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Terminal 1</td><td>GPIO 4, physical pin 7</td><td>Input uses the Pi's internal pull-up.</td></tr>
+          <tr><td>Terminal 2</td><td>Ground</td><td>Pressed is low; released is high.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h2>OLED connections (SPI1)</h2>
     <p>The SSD1306 is a six-pin SPI module without a CS connection:</p>
     <div class="table-scroll">
-      <table>
+      <table id="connections-oled">
         <thead><tr><th>OLED label</th><th>Pi signal</th><th>Physical header pin</th></tr></thead>
         <tbody>
           <tr><td>VCC</td><td>3.3 V</td><td>1 or 17 (3.3 V rail)</td></tr>
@@ -95,6 +146,7 @@
           <tr><td>DC</td><td>GPIO 6</td><td>31</td></tr>
           <tr><td>SDA / DIN (data)</td><td>GPIO 20 / MOSI1</td><td>38</td></tr>
           <tr><td>SCL / CLK (clock)</td><td>GPIO 21 / SCLK1</td><td>40</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/display.py"><code>display.py</code></a> and <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/main.py"><code>main.py</code></a></td></tr>
         </tbody>
       </table>
     </div>
@@ -113,13 +165,14 @@
       <strong>physical pin numbers</strong> of the Pico.
       Firmware and install notes are in <code>pico_2w/</code>.</p>
     <div class="table-scroll">
-      <table>
+      <table id="connections-pico-node">
         <thead><tr><th>Sonar pin</th><th>Pico 2 W pin</th></tr></thead>
         <tbody>
           <tr><td>VCC</td><td>36 (3V3 OUT)</td></tr>
           <tr><td>GND</td><td>38</td></tr>
           <tr><td>TRIG</td><td>32 (GP27)</td></tr>
           <tr><td>ECHO</td><td>34 (GP28)</td></tr>
+          <tr><th scope="row">Code reference</th><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/pico_2w/code.py"><code>pico_2w/code.py</code></a> and <a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/mqtt_client.py"><code>mqtt_client.py</code></a></td></tr>
         </tbody>
       </table>
     </div>
@@ -127,26 +180,55 @@
       is powered from 5 V (pin 40), add a 1 k&Omega; / 2 k&Omega; divider on ECHO.</p>
     <h2 id="actuators">Actuators and indicators</h2>
     <h3 id="relay">5 V relay module</h3>
-    <p>Power the relay module from 5 V and common ground. Its IN input connects
-      to GPIO 24 (physical pin 18) and is active-low: GPIO low energizes the relay.
-      The contact wiring shown routes 5 V from COM through NO to the stepper
-      driver's motor supply. Confirm the relay module's input requirements and
-      contact ratings before use.</p>
+    <div class="table-scroll">
+      <table id="connections-relay">
+        <thead><tr><th>Relay connection</th><th>Connect to</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>5 V rail</td><td>Confirm the module supports the supply.</td></tr>
+          <tr><td>GND</td><td>Common ground</td><td>Shared with the Pi and driver.</td></tr>
+          <tr><td>IN</td><td>GPIO 24, physical pin 18</td><td>Active-low: GPIO low energizes the relay.</td></tr>
+          <tr><td>COM / NO</td><td>5 V motor supply path</td><td>The documented contact path switches motor power to the stepper driver; verify contact ratings.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/vault_lock.py"><code>vault_lock.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="stepper">ULN2003 driver and 28BYJ-48 stepper</h3>
-    <p>Connect ULN2003 IN1/IN2/IN3/IN4 to GPIO 17/27/22/23
-      (physical pins 11/13/15/16). The driver and motor use the switched 5 V
-      supply from the relay's NO contact and share ground with the Pi. The
-      ULN2003 drives the motor coils; do not connect the motor directly to GPIO.</p>
+    <div class="table-scroll">
+      <table id="connections-stepper">
+        <thead><tr><th>Driver / motor connection</th><th>Connect to</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>IN1 / IN2 / IN3 / IN4</td><td>GPIO 17 / 27 / 22 / 23 (physical pins 11 / 13 / 15 / 16)</td><td>Ordered coil-control signals.</td></tr>
+          <tr><td>Motor supply</td><td>Switched 5 V from relay NO</td><td>Use the driver; never power the motor from GPIO.</td></tr>
+          <tr><td>Ground</td><td>Common ground</td><td>Shared with the Pi and driver supply.</td></tr>
+          <tr><td>Motor phases</td><td>28BYJ-48 connector to ULN2003</td><td>Do not connect motor windings directly to Pi pins.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/vault_lock.py"><code>vault_lock.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="rgb-led">RGB status LED</h3>
-    <p>The documented LED is common-cathode: connect its common terminal to
-      ground. Connect red, green, and blue through their individual 220 Ω
-      resistors to GPIO 12, 13, and 26 (physical pins 32, 33, and 37). Confirm
-      the actual LED pin order and resistor suitability for the component.</p>
+    <div class="table-scroll">
+      <table id="connections-rgb-led">
+        <thead><tr><th>LED connection</th><th>Connect to</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Common cathode</td><td>Ground</td><td>Documented LED type; confirm the actual part.</td></tr>
+          <tr><td>Red</td><td>GPIO 12, physical pin 32, through 220 Ω resistor</td><td>PWM brightness control.</td></tr>
+          <tr><td>Green</td><td>GPIO 13, physical pin 33, through 220 Ω resistor</td><td>PWM brightness control.</td></tr>
+          <tr><td>Blue</td><td>GPIO 26, physical pin 37, through 220 Ω resistor</td><td>PWM brightness control.</td></tr>
+          <tr><th scope="row">Code reference</th><td colspan="2"><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/zwaailicht.py"><code>zwaailicht.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
     <h3 id="audio">Microphone and Bluetooth speaker</h3>
-    <p>These peripherals are not GPIO connections in the diagram. The USB
-      microphone is used by the optional Vosk voice path; the Bluetooth speaker
-      is used for audio alerts. The second authentication factor is bypassed by
-      default in the current configuration.</p>
+    <div class="table-scroll">
+      <table id="connections-audio">
+        <thead><tr><th>Peripheral</th><th>Connection</th><th>Code reference</th></tr></thead>
+        <tbody>
+          <tr><td>USB microphone</td><td>USB audio input; not a GPIO connection in the diagram.</td><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/voice.py"><code>voice.py</code></a></td></tr>
+          <tr><td>Bluetooth speaker</td><td>Paired over Bluetooth for audio alerts.</td><td><a href="https://github.com/WouterHeijligen/IoT_SmartVault/blob/master/notificaties.py"><code>notificaties.py</code></a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The second authentication factor is bypassed by default in the current configuration.</p>
     <h2>Known diagram differences</h2>
     <ul>
       <li>The GPIO assignments for the Raspberry Pi 5 now match the code, including
