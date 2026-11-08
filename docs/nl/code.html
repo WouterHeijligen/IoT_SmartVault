@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Code uitgelegd</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="index.html">Overzicht</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html">Installatie</a>
+      <a href="code.html" aria-current="page">Code</a>
+      <a href="development.html">Ontwikkeling</a>
+    </nav>
+    <p class="language-switch" aria-label="Taal">
+      <a href="../code.html" lang="en">English</a> |
+      <span aria-current="page">Nederlands</span>
+    </p>
+  </header>
+  <main>
+    <h1>Code uitgelegd</h1>
+    <p>Deze pagina beschrijft de softwaremodules, libraries, threads,
+      communicatieprotocollen en veiligheidslogica. De broncode bevat ook
+      docstrings met details per functie.</p>
+
+    <h2 id="overview">Overzicht</h2>
+    <p>De Raspberry Pi 5 draait <code>main.py</code>, een multithreaded state
+      machine. Een Raspberry Pi Pico 2 W meet de perimeterafstand en stuurt
+      deze via MQTT naar een Mosquitto-broker op de Pi. De Pi verstuurt alarmen
+      naar ntfy en telemetrie naar ThingSpeak.</p>
+    <pre><code>Pico 2 W (sonarmodel nog niet afgestemd) --MQTT--&gt; Mosquitto (Pi :1883) --&gt; PerimeterListener
+                                                              |
+knop / potentiometer / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt; main.py-threads
+                                                              |
+        OLED, RGB-led, relais + stepper, speaker &lt;+--&gt; ThingSpeak, ntfy</code></pre>
+
+    <h2 id="protocols">Architectuur en communicatieprotocollen</h2>
+    <p><code>main.py</code> coördineert de applicatie. Sensormetingen en
+      gebruikersinvoer werken de gedeelde, met een lock beschermde
+      <code>VaultState</code> bij. Die status stuurt het display, de indicator,
+      het relais/de stepper en meldingen aan. De Pico is een aparte Wi-Fi-node.
+      Een storing of verouderde meting op die netwerkverbinding is niet hetzelfde
+      als een lokale I2C- of SPI-storing.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Protocol</th><th>Eindpunten</th><th>Rol</th></tr></thead>
+        <tbody>
+          <tr><td>I2C</td><td>Pi GPIO 2/3 naar BH1750</td><td>Tweedraads digitale sensorbus voor luxmetingen.</td></tr>
+          <tr><td>SPI0</td><td>Pi GPIO 11/9/10 en handmatige CS GPIO 25 naar MCP3008</td><td>Leest ADC-kanalen voor potentiometer en LM35.</td></tr>
+          <tr><td>SPI1</td><td>Pi GPIO 21/20 naar SSD1306</td><td>Verstuurt OLED-data; het scherm heeft geen MISO- of CS-aansluiting.</td></tr>
+          <tr><td>Wi-Fi + lokale MQTT</td><td>Pico publiceert naar Mosquitto op de Pi; Pi abonneert</td><td>Afstand op <code>vault/perimeter/distance</code>.</td></tr>
+          <tr><td>MQTT naar de cloud</td><td>Pi-client naar ThingSpeak</td><td>Publiceert telemetrie, gescheiden van de lokale Mosquitto-verbinding.</td></tr>
+          <tr><td>HTTPS</td><td>Pi naar ntfy</td><td>Verstuurt alarm- en blokkeringmeldingen.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>I2C en SPI zijn lokale randapparaatbussen; MQTT is een publish/subscribe-
+      berichtenprotocol; HTTPS vervoert de meldingsverzoeken. Wi-Fi levert de
+      netwerkverbinding van de Pico, niet de berichtlogica. De lokale MQTT-broker
+      setup voor de lokale Mosquitto-broker laat anonieme clients toe op poort
+      1883; ThingSpeak-MQTT gebruikt in de huidige configuratie ook poort 1883.
+      Geen van beide MQTT-verbindingen is versleuteld.</p>
+
+    <h3>I2C: de BH1750-sensorbus</h3>
+    <p>I2C gebruikt de gedeelde kloklijn SCL en datalijn SDA. De controller
+      selecteert een apparaat via het busadres; de Pi gebruikt adres
+      <code>0x23</code> voor de BH1750. Bij het starten stelt de driver de sensor
+      in op continu meten met hoge resolutie. Daarna leest de applicatie de
+      digitale lichtwaarde uit en rekent deze om naar lux. Dit is een lokale
+      verbinding tussen de Pi en sensor, geen internetverbinding.</p>
+
+    <h3>SPI0: analoge metingen via de MCP3008</h3>
+    <p>SPI verschuift gegevens synchroon met een klok. De Pi is de controller:
+      SCLK levert de timing, MOSI stuurt conversieverzoeken, MISO retourneert
+      ADC-data en GPIO 25 selecteert de MCP3008. De ingangen CH0 en CH1
+      digitaliseren de spanningen van de potentiometer en LM35. De OLED zit niet
+      op deze bus, zodat updates van het scherm de ADC-klok- en datalijnen niet
+      overnemen.</p>
+
+    <h3>SPI1: updates naar het SSD1306-display</h3>
+    <p>De Pi stuurt het beeldbuffer naar de OLED via SPI1 met SCLK GPIO 21 en
+      MOSI GPIO 20. Aparte GPIO-signalen resetten de controller (GPIO 16) en
+      onderscheiden opdrachten van pixeldata (DC, GPIO 6). Deze module en driver
+      gebruiken geen MISO- of chipselectdraad. SPI1 is gescheiden van SPI0 van
+      de MCP3008.</p>
+
+    <h3>Wi-Fi en lokale MQTT: perimetermetingen van de Pico</h3>
+    <p>De Pico maakt eerst verbinding met het ingestelde Wi-Fi-netwerk en opent
+      daarna een MQTT-verbinding met Mosquitto op de Pi. Elke 0,5 seconde
+      publiceert de Pico een afstand in centimeters op
+      <code>vault/perimeter/distance</code>. De <code>PerimeterListener</code>
+      op de Pi abonneert zich op dat topic en geeft ontvangen waarden door aan
+      de gedeelde status. Een meting ouder dan 10 seconden geldt als verouderd.
+      De broker routeert topicberichten tussen clients; de publisher hoeft de
+      subscriber niet rechtstreeks te adresseren.</p>
+
+    <h3>MQTT naar ThingSpeak: cloudtelemetrie</h3>
+    <p>Een aparte MQTT-client op de Pi publiceert elke 15 seconden een
+      kanaalupdate naar <code>channels/&lt;id&gt;/publish</code>. De payload
+      bevat de ingestelde meet- en statusvelden, waaronder het geselecteerde
+      cijfer van de potentiometer; kanaal en inloggegevens komen uit de lokale
+      omgevingsconfiguratie. Deze client gebruikt QoS 0 en
+      <code>retain=False</code>: MQTT vraagt de broker dus niet om het laatste
+      bericht op te slaan of de aflevering te bevestigen. De huidige verbinding
+      gebruikt poort 1883 en geen TLS; verstuur geen echte inloggegevens over
+      een niet-vertrouwd netwerk.</p>
+
+    <h3>HTTPS: alarmmeldingen via ntfy</h3>
+    <p>Wanneer een alarm of blokkering een melding vereist, stuurt de Pi een
+      HTTP POST-verzoek naar <code>https://ntfy.sh/&lt;topic&gt;</code>. HTTPS
+      beveiligt HTTP met TLS voor de verbinding met de server. ntfy routeert het
+      bericht naar clients die op dat topic geabonneerd zijn. Op de openbare
+      ntfy-dienst is de topicnaam in feite een wachtwoord: houd deze privé en
+      kies een moeilijk te raden waarde.</p>
+
+    <h3>Overige hardwaresignalen (geen netwerkprotocollen)</h3>
+    <p>De knop en het relais gebruiken digitale GPIO-niveaus. De knop is
+      actief-laag met een pull-up; het relais is ook actief-laag. De stepperdriver
+      krijgt een reeks GPIO-signalen voor de motorwikkelingen. De RGB-led gebruikt
+      PWM: door het deel van elke puls dat aan is te variëren, verandert de
+      waargenomen helderheid per kleur. De sonarmodule op de Pico gebruikt een
+      triggerpuls en meet hoe lang de echopuls duurt; dit is een timinginterface,
+      geen I2C of SPI. Bluetooth verbindt de Pi met de audiospeaker en staat los
+      van het Wi-Fi/MQTT-dataverkeer van de Pico.</p>
+
+    <h3>Externe bronnen</h3>
+    <ul>
+      <li><a href="https://www.nxp.com/docs/en/user-guide/UM10204.pdf">NXP-specificatie en handleiding voor de I2C-bus</a></li>
+      <li><a href="https://docs.kernel.org/spi/spi-summary.html">Linux-kernel: SPI-overzicht</a></li>
+      <li><a href="https://docs.circuitpython.org/en/latest/shared-bindings/busio/index.html">CircuitPython <code>busio</code>-referentie</a> voor I2C- en SPI-API's</li>
+      <li><a href="https://mqtt.org/">MQTT.org</a> en <a href="https://mosquitto.org/documentation/">Mosquitto-documentatie</a></li>
+      <li><a href="https://www.mathworks.com/help/thingspeak/mqtt-api.html">ThingSpeak MQTT API</a></li>
+      <li><a href="https://docs.ntfy.sh/publish/">ntfy-documentatie voor publiceren</a></li>
+      <li><a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Overview">MDN-overzicht van HTTP</a> en de <a href="https://www.rfc-editor.org/rfc/rfc8446">IETF-specificatie voor TLS 1.3</a></li>
+      <li><a href="https://docs.circuitpython.org/en/latest/shared-bindings/wifi/index.html">CircuitPython Wi-Fi-referentie</a> en <a href="https://docs.circuitpython.org/en/latest/shared-bindings/pwmio/index.html">PWM-referentie</a></li>
+    </ul>
+
+    <h2 id="modules">Modules</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Bestand</th><th>Rol</th><th>Belangrijkste libraries</th></tr></thead>
+        <tbody>
+          <tr><td><code>main.py</code></td><td>Entry point, state machine en applicatietaken</td><td><code>threading</code>, <code>board</code>, <code>digitalio</code></td></tr>
+          <tr><td><code>vault_state.py</code></td><td>Drempelwaarden, pincode en gedeelde <code>VaultState</code></td><td><code>threading</code></td></tr>
+          <tr><td><code>sensors.py</code></td><td>Potentiometer, LM35 (via MCP3008) en BH1750</td><td><code>board</code>, <code>busio</code>, <code>digitalio</code>, <code>adafruit_mcp3xxx</code></td></tr>
+          <tr><td><code>display.py</code></td><td>SSD1306 OLED-schermen via SPI1; beheert standaard de eigen bus</td><td><code>busio</code>, <code>adafruit_ssd1306</code>, <code>Pillow</code></td></tr>
+          <tr><td><code>vault_lock.py</code></td><td>Relaisinterlock en 28BYJ-48-stepper</td><td><code>board</code>, <code>digitalio</code></td></tr>
+          <tr><td><code>zwaailicht.py</code></td><td>PWM-RGB-led, statuskleuren en rood/uit-waarschuwingsknipperlicht</td><td><code>gpiozero</code> (<code>RGBLED</code>)</td></tr>
+          <tr><td><code>voice.py</code></td><td>Offline spraakherkenning (tweede factor)</td><td><code>vosk</code>, <code>sounddevice</code></td></tr>
+          <tr><td><code>mqtt_client.py</code></td><td>ThingSpeak-publicatie en lokale perimeter-subscriber</td><td><code>paho-mqtt</code>, <code>python-dotenv</code></td></tr>
+          <tr><td><code>notificaties.py</code></td><td>ntfy-push, sirene (<code>pw-play</code>) en Bluetooth-verbinding</td><td><code>requests</code>, <code>subprocess</code></td></tr>
+          <tr><td><code>pico_2w/code.py</code></td><td>Firmware van de perimeter-node</td><td><code>adafruit_hcsr04</code>, <code>adafruit_minimqtt</code>, <code>wifi</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="libraries">Libraries</h2>
+    <ul>
+      <li><strong>digitalio</strong> via Adafruit Blinka: knop-pull-up, actief-laag relais en digitale motorspoelen.</li>
+      <li><strong>gpiozero</strong>: <code>RGBLED(pwm=True)</code> voor de RGB-led; PWM-uitvoering en timing hangen af van de pinbackend. Software-PWM kan jitter vertonen.</li>
+      <li><strong>adafruit-blinka</strong>: levert <code>board</code>, <code>busio</code> en <code>digitalio</code> zodat CircuitPython-drivers op de Pi werken.</li>
+      <li><strong>adafruit-circuitpython-mcp3xxx</strong>: MCP3008-ADC-driver.</li>
+      <li><strong>adafruit-circuitpython-ssd1306</strong> en <strong>Pillow</strong>: OLED-driver en tekenen in een beeldbuffer.</li>
+      <li><strong>paho-mqtt</strong>: MQTT-client voor ThingSpeak en de lokale broker (callback-API versie 2).</li>
+      <li><strong>requests</strong>: HTTPS POST naar ntfy.sh.</li>
+      <li><strong>python-dotenv</strong>: leest lokale inloggegevens uit <code>.env</code> (niet in Git).</li>
+      <li><strong>vosk</strong> en <strong>sounddevice</strong>: offline spraakherkenning en audio-opname via de USB-microfoon.</li>
+      <li>Systeemtools: <code>pw-play</code> (PipeWire), <code>bluetoothctl</code> en <code>mosquitto</code>.</li>
+    </ul>
+
+    <h2 id="threads">Threads in main.py</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Thread</th><th>Frequentie</th><th>Taak</th></tr></thead>
+        <tbody>
+          <tr><td>Button</td><td>50 Hz</td><td>Debounced flankdetectie; voegt in PIN_INPUT een cijfer toe en controleert na drie cijfers de code. In ALARM of UNLOCKED reset de knop naar PIN_INPUT; in LOCKOUT doet de knop niets.</td></tr>
+          <tr><td>Sensors-OLED</td><td>10 Hz</td><td>Leest potentiometer (met hysterese), LM35 (mediaan van 5) en BH1750; beoordeelt brand, sabotage en loitering; ververst het OLED.</td></tr>
+          <tr><td>Actuators</td><td>Ongeveer 30 Hz</td><td>Voert motorbewegingen uit, werkt de RGB-led bij en speelt de sirene af volgens de modus.</td></tr>
+          <tr><td>Cloud</td><td>2 Hz; telemetrie elke 15 s</td><td>Verstuurt ntfy-pushmeldingen en ThingSpeak-telemetrie.</td></tr>
+          <tr><td>Voice</td><td>Continu, alleen in VOICE_2FA</td><td>Laadt Vosk bij het starten en luistert 20 s naar het wachtwoord. Alleen actief als <code>BYPASS_VOICE_2FA=False</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Alle threads delen één <code>VaultState</code>. Wijzigingen gebeuren onder
+      <code>state.lock</code>. De ADC gebruikt SPI0 en de OLED SPI1, met aparte
+      klok- en datadraden. Dezelfde sensor-/displaythread gebruikt beide bussen
+      na elkaar.</p>
+
+    <h2 id="state-machine">State machine</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Modus</th><th>Wanneer</th><th>Uitgangen</th></tr></thead>
+        <tbody>
+          <tr><td>PIN_INPUT</td><td>Start, reset of na blokkering</td><td>Blauw licht, motor spanningsloos; potentiometer kiest 0-9 en de knop bevestigt</td></tr>
+          <tr><td>VOICE_2FA</td><td>Juiste pincode (voice-bypass uit)</td><td>Oranje licht; Vosk luistert 20 s naar het wachtwoord en keert daarna terug naar PIN_INPUT</td></tr>
+          <tr><td>UNLOCKED</td><td>Beide factoren geaccepteerd</td><td>Groen licht; relais aan, stepper opent</td></tr>
+          <tr><td>ALARM</td><td>Brand, sabotage of loitering</td><td>Rood/uit-knipperlicht, sirene, ntfy-push; knop reset</td></tr>
+          <tr><td>LOCKOUT</td><td>Drie foute pincodes</td><td>Gedimd rood, 10 seconden wachten, pushmelding en sirene</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="security">Veiligheidslogica</h2>
+    <ul>
+      <li><strong>Potentiometer naar cijfer:</strong> de 10-bit waarde (<code>raw &gt;&gt; 6</code>) wordt verdeeld in 10 zones. Hysterese vereist dat de waarde minstens 12 tellen voorbij een zonegrens komt voordat het cijfer verandert.</li>
+      <li><strong>Brand:</strong> een mediaan van 5 LM35-metingen filtert pieken; voor alarm zijn 10 opeenvolgende metingen boven de drempel nodig. Tijdens motorbewegingen is detectie onderdrukt vanwege mogelijke voedingsschommelingen.</li>
+      <li><strong>Sabotage:</strong> licht boven de drempel terwijl de kluis gesloten is.</li>
+      <li><strong>Loitering:</strong> afstand onder 40 cm (Pico) gedurende 15 seconden zonder activiteit via potentiometer of knop. Metingen ouder dan 10 seconden zijn verouderd.</li>
+      <li><strong>Foute pincode:</strong> 3 pogingen, 3 seconden rood knipperlicht per fout en daarna 10 seconden blokkering.</li>
+      <li><strong>Motorinterlock:</strong> het actief-laag relais (GPIO 24) schakelt 5 V naar de ULN2003 en staat standaard open; de motor krijgt alleen tijdens beweging voeding.</li>
+      <li><strong>Veilig afsluiten:</strong> na een onderbroken opening sluit de applicatie de kluis bij reset (<code>lock_executed</code>).</li>
+    </ul>
+    <p>De huidige testdrempels zijn 30 &deg;C voor temperatuur en 50 lux voor
+      sabotage; ze staan in <code>vault_state.py</code> en zijn geen gevalideerde
+      brand- of beveiligingsnormen.</p>
+
+    <h2 id="hardware">Hardwarebesturing</h2>
+    <ul>
+      <li><strong>MCP3008:</strong> SPI0, CS GPIO 25; kanaal 0 = potentiometer, kanaal 1 = LM35.</li>
+      <li><strong>Alarmpush:</strong> direct bij het eerste alarm, daarna maximaal elke 2 minuten zolang ALARM actief blijft. Reset wist de wachttijd niet; ingesteld via <code>ALARM_PUSH_INTERVAL_S</code>.</li>
+      <li><strong>BH1750:</strong> I2C-adres <code>0x23</code>; eenmaal ingesteld op continue hoge resolutie (commando <code>0x10</code>), daarna uitlezen. Lux = ruwe waarde / 1,2.</li>
+      <li><strong>OLED:</strong> SSD1306 128x64 op SPI1: SCLK GPIO 21 (fysieke pin 40), MOSI GPIO 20 (pin 38), RST GPIO 16 en DC GPIO 6. Geen CS of MISO. Zie <a href="hardware.html">de aansluitingen</a> en <a href="setup.html#spi1">SPI1-configuratie</a>.</li>
+      <li><strong>Stepper:</strong> 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 3072 stappen en 10 ms per stap (ongeveer 31 s). Openen gebruikt de omgekeerde sequentie; sluiten de normale.</li>
+      <li><strong>RGB-led:</strong> PWM op GPIO 12/13/26; bij een foute code en alarm knippert de led rood/uit.</li>
+    </ul>
+
+    <h2 id="network">Netwerk en cloud</h2>
+    <ul>
+      <li><strong>Perimeter:</strong> de Pico 2 W publiceert elke 0,5 s afstand op <code>vault/perimeter/distance</code>. <code>PerimeterListener</code> abonneert zich op Mosquitto (<code>127.0.0.1:1883</code>) en roept <code>on_perimeter_afstand()</code> aan.</li>
+      <li><strong>ThingSpeak:</strong> MQTT-publicatie op <code>channels/&lt;id&gt;/publish</code> met veld 1 lux, 2 temperatuur, 3 afstand, 4 moduscode (0-4) en 5 het geselecteerde cijfer; minstens 15 s tussen updates.</li>
+      <li><strong>ntfy:</strong> HTTP POST naar <code>https://ntfy.sh/&lt;topic&gt;</code> met hoge prioriteit.</li>
+      <li><strong>Audio:</strong> <code>sirene()</code> speelt <code>sirene.wav</code> af met <code>pw-play</code>. Onder <code>sudo</code> gebeurt dit als de oorspronkelijke gebruiker. Een thread houdt de Bluetooth-speaker verbonden.</li>
+    </ul>
+    <p>De ThingSpeak-client gebruikt QoS 0 en de MQTT-verbinding op poort 1883
+      is niet met TLS versleuteld. De lokale Mosquitto-broker accepteert anonieme
+      clients en gebruikt eveneens poort 1883. Houd dit beperkt tot een vertrouwd,
+      afgesloten projectnetwerk.</p>
+
+    <h2 id="pico">Pico 2 W-firmware</h2>
+    <p><code>pico_2w/code.py</code> (CircuitPython) maakt verbinding met Wi-Fi,
+      meet met <code>adafruit_hcsr04</code> (trigger GP27, echo GP28) en
+      publiceert via <code>adafruit_minimqtt</code>. Netwerk- en brokergegevens
+      staan in <code>settings.toml</code>; de firmware probeert opnieuw te
+      verbinden als de verbinding uitvalt.</p>
+
+    <h2 id="demo">Demo-vragen om te oefenen</h2>
+    <ul>
+      <li>Waarom gebruiken we een mediaan en een bevestigingsteller voor het brandalarm?</li>
+      <li>Waarom staat er een relais in serie met de motorvoeding?</li>
+      <li>Welke signalen gebruikt de OLED op SPI1 en welke gebruikt de ADC op SPI0?</li>
+      <li>Wat gebeurt er als de Pico offline gaat? (Afstand wordt na 10 s als verouderd genegeerd.)</li>
+      <li>Waarom kan de sirene onder <code>sudo</code> niet werken zonder aanpassing? (De PipeWire-sessie van de gebruiker.)</li>
+      <li>Hoe voorkomt hysterese dat het gekozen cijfer flikkert?</li>
+      <li>Wat is het verschil tussen de lokale MQTT-broker en de ThingSpeak-MQTT-verbinding?</li>
+    </ul>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Broncode op GitHub</a></footer>
+</body>
+</html>

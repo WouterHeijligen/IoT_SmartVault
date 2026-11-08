@@ -1,7 +1,9 @@
 # Smart Vault project — Architecture and IoT value loop
 
-**Sources:** Uploaded project text files, `txt-files\docs\index.txt`,
-`txt-files\docs\code.txt`, and the uploaded connection diagram.
+**Sources:** Uploaded project text files, the English documentation exports
+under `txt-files\docs\`, and the uploaded connection diagram. Use those English
+exports as the study source; the Dutch web pages are translations, not separate
+evidence.
 
 ## Explanation video prompt
 
@@ -14,12 +16,15 @@ analyzing, and acting.
 Trace the main components and data paths: Raspberry Pi 5 application,
 Raspberry Pi Pico 2 W perimeter node, sensors, local MQTT broker, OLED/RGB
 indicator, relay/stepper, ThingSpeak telemetry, and ntfy notifications. Explain
-which components sense, transport, process, display, or act. Use the uploaded
+which components sense, transport, process, display, or act. Distinguish the
+local I2C and SPI buses from Wi-Fi, local MQTT, cloud MQTT, and HTTPS. Explain
+what each link carries in the vault, and distinguish PWM/GPIO signalling from
+network protocols. Use the uploaded
 connection diagram as visual context, but do not treat it as proof of physical
 wiring. Distinguish current implementation from planned features and from
-claims in the checklist. The voice factor is described as bypassed by default
-in the current documentation; state that carefully and do not present planned
-behavior as implemented.
+claims in the checklist. The current code sets `BYPASS_VOICE_2FA = False`, so the Vosk voice
+path is enabled in the state flow. Do not reveal the configured passphrase or
+claim that microphone/model operation was independently verified on hardware.
 
 Narrate one normal access flow and one alarm/telemetry flow. Close with the
 project's educational value, limitations, and a clear component/data-flow
@@ -39,7 +44,9 @@ the Pi 5 from the Pico 2 W.
 Include 8 architecture/component questions, 10 data-flow tracing questions,
 10 application scenarios (normal input, alarm, perimeter, telemetry), 8
 current-versus-planned implementation questions, and 9 oral-defense questions
-about design rationale and limitations. Mix short answer, diagram narration,
+about design rationale and limitations. Across these, require explanations of
+I2C, SPI0, SPI1, Wi-Fi/MQTT, HTTPS, and why PWM is a signalling technique rather
+than a network protocol. Mix short answer, diagram narration,
 multiple choice, and scenario questions. Make the learner explain reasoning,
 not merely name components.
 

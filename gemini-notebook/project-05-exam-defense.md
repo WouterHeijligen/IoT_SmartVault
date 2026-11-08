@@ -1,7 +1,8 @@
 # Smart Vault project — Integrated exam defense
 
-**Sources:** All uploaded Smart Vault text files, documentation, and the
-connection diagram.
+**Sources:** All uploaded Smart Vault text files, the English documentation
+exports under `txt-files\docs\`, and the connection diagram. The Dutch web
+pages are translations, not separate evidence.
 
 ## Explanation video prompt
 
@@ -11,7 +12,9 @@ project, using all uploaded project sources.
 
 Structure it as a student defense: problem and intended value; Information-
 Value Loop; system architecture; hardware and pin/bus choices; software and
-state behavior; MQTT/cloud/notifications; testing evidence; limitations and
+state behavior; protocol explanations (I2C, SPI0, SPI1, Wi-Fi, local/cloud
+MQTT, HTTPS, and PWM as a hardware signalling technique); MQTT/cloud/
+notifications; testing evidence; limitations and
 future verification. Include a narrated explanation of one normal access
 flow, one alarm flow, and one perimeter/cloud flow. For each, explain the
 trigger, data path, decision, output/action, and evidence source.
@@ -35,11 +38,12 @@ all uploaded Smart Vault source files, docs, and the diagram. Create exactly
 45 questions (never exceed the Notebook limit of 50), covering:
 - 8 questions on the problem, intended value, and Information-Value Loop;
 - 8 questions on system architecture and component responsibilities;
-- 8 questions on hardware, signals, pin numbering, I2C/SPI, and electrical
-  safety;
+- 8 questions on hardware, signals, pin numbering, I2C/SPI bus behavior, the
+  distinction between local buses and network protocols, and electrical safety;
 - 8 questions on software modules, state transitions, filtering, alarms, and
   actuation;
-- 7 questions on MQTT, ThingSpeak, ntfy, and data interpretation;
+- 7 questions on Wi-Fi/MQTT data flow, ThingSpeak, HTTPS/ntfy, QoS 0, and data
+  interpretation;
 - 6 questions on test evidence, limitations, security/privacy, and unresolved
   discrepancies.
 

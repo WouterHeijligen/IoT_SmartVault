@@ -32,7 +32,7 @@ class Page(HTMLParser):
         self.references = []
         self.ids = set()
         self.has_title = False
-        self.has_language = False
+        self.language = None
         self.has_viewport = False
         self.feed(path.read_text(encoding="utf-8"))
         self.close()
@@ -44,7 +44,7 @@ class Page(HTMLParser):
         if tag == "title":
             self.has_title = True
         if tag == "html":
-            self.has_language = bool(attrs.get("lang"))
+            self.language = attrs.get("lang")
         if tag == "meta" and attrs.get("name") == "viewport":
             self.has_viewport = True
         for attribute in ("href", "src"):
@@ -59,7 +59,8 @@ class DocumentationTests(unittest.TestCase):
         for path, page in pages.items():
             with self.subTest(page=path.name):
                 self.assertTrue(page.has_title, "Missing title")
-                self.assertTrue(page.has_language, "Missing page language")
+                expected_language = "nl" if path.parent.name == "nl" else "en"
+                self.assertEqual(page.language, expected_language, "Incorrect page language")
                 self.assertTrue(page.has_viewport, "Missing mobile viewport")
             for reference in page.references:
                 with self.subTest(page=path.name, reference=reference):
@@ -73,6 +74,32 @@ class DocumentationTests(unittest.TestCase):
                     if url.fragment and target in pages:
                         self.assertIn(unquote(url.fragment), pages[target].ids)
 
+    def test_every_english_page_has_a_dutch_counterpart_and_toggle(self):
+        for page in DOCS.glob("*.html"):
+            dutch_page = DOCS / "nl" / page.name
+            with self.subTest(page=page.name):
+                self.assertTrue(dutch_page.is_file(), f"Missing Dutch page: {dutch_page.name}")
+                self.assertIn(f"nl/{page.name}", Page(page).references)
+                self.assertIn(f"../{page.name}", Page(dutch_page).references)
+
+    def test_protocol_walkthroughs_explain_project_links_and_external_sources(self):
+        markers = (
+            "I2C",
+            "SPI0",
+            "SPI1",
+            "MQTT",
+            "Wi-Fi",
+            "HTTPS",
+            "PWM",
+            "mqtt.org",
+            "ntfy.sh/publish",
+        )
+        for page in (DOCS / "code.html", DOCS / "nl" / "code.html"):
+            with self.subTest(page=page):
+                text = page.read_text(encoding="utf-8")
+                for marker in markers:
+                    self.assertIn(marker, text)
+
     def test_code_text_exports_match_current_sources(self):
         for export_name, source_name in CODE_EXPORTS.items():
             with self.subTest(export=export_name):
@@ -84,9 +111,14 @@ class DocumentationTests(unittest.TestCase):
     def test_documentation_text_exports_exist_for_site_pages(self):
         for page in DOCS.glob("*.html"):
             with self.subTest(page=page.name):
-                export = TEXT_DOCS / f"{page.stem}.txt"
+                relative = page.relative_to(DOCS)
+                export = TEXT_DOCS / relative.with_suffix(".txt")
                 self.assertTrue(export.is_file(), f"Missing export: {export.name}")
-                self.assertIn(f"Source: docs\\{page.name}", export.read_text(encoding="utf-8"))
+                source_path = str(relative).replace("/", "\\")
+                self.assertIn(
+                    f"Source: docs\\{source_path}",
+                    export.read_text(encoding="utf-8"),
+                )
 
     def test_hardware_guide_and_text_export_cover_current_connections(self):
         expected = (

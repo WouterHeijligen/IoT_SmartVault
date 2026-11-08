@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Hardware en aansluitingen</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="index.html">Overzicht</a>
+      <a href="hardware.html" aria-current="page">Hardware</a>
+      <a href="setup.html">Installatie</a>
+      <a href="code.html">Code</a>
+      <a href="development.html">Ontwikkeling</a>
+    </nav>
+    <p class="language-switch" aria-label="Taal">
+      <a href="../hardware.html" lang="en">English</a> |
+      <span aria-current="page">Nederlands</span>
+    </p>
+  </header>
+  <main>
+    <h1>Hardware en aansluitingen</h1>
+    <aside class="notice"><strong>Nieuwste diagram, met enkele labels die nog afgestemd moeten worden.</strong>
+      Het diagram hieronder is bijgewerkt op 8 november 2026. De tabel beschrijft
+      de huidige Python-configuratie, niet een fysieke inspectie. Controleer
+      datasheets, spanningsniveaus en bedrading voordat je de schakeling voedt.</aside>
+    <h2>Pinindeling uit de huidige code</h2>
+    <p>GPIO-nummers zijn BCM-nummers, geen fysieke pinnummers. De OLED gebruikt
+      SPI1 en de MCP3008 SPI0. Alleen de MCP3008 heeft een GPIO-chipselect.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Apparaat / signaal</th><th>BCM-GPIO of kanaal</th><th>Bronbestand</th></tr></thead>
+        <tbody>
+          <tr><td>Knop, actief-laag met pull-up</td><td>4</td><td><code>main.py</code></td></tr>
+          <tr><td>MCP3008 SPI0 klok / MOSI / MISO</td><td>11 / 10 / 9</td><td><code>sensors.py</code></td></tr>
+          <tr><td>MCP3008 chipselect</td><td>25 (handmatig aangestuurd)</td><td><code>sensors.py</code></td></tr>
+          <tr><td>Potentiometer-wiper</td><td>MCP3008 CH0</td><td><code>sensors.py</code></td></tr>
+          <tr><td>LM35-uitgang</td><td>MCP3008 CH1</td><td><code>sensors.py</code></td></tr>
+          <tr><td>BH1750 SDA / SCL</td><td>2 / 3, I2C-adres <code>0x23</code></td><td><code>sensors.py</code></td></tr>
+          <tr><td>SSD1306 reset / data-command</td><td>16 / 6, SPI, 128 x 64</td><td><code>display.py</code></td></tr>
+          <tr><td>SSD1306 SPI1 klok / data</td><td>21 / 20 (fysieke pinnen 40 / 38)</td><td><code>display.py</code></td></tr>
+          <tr><td>RGB-led rood / groen / blauw</td><td>12 / 13 / 26, PWM</td><td><code>zwaailicht.py</code></td></tr>
+          <tr><td>Relaisbesturing, actief-laag</td><td>24</td><td><code>vault_lock.py</code></td></tr>
+          <tr><td>Stepperdriver IN1 / IN2 / IN3 / IN4</td><td>17 / 27 / 22 / 23</td><td><code>vault_lock.py</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>De MCP3008-chipselect wordt handmatig aangestuurd op GPIO 25 (fysieke pin 22).
+      GPIO 8 / CE0 wordt niet gebruikt door de huidige code.</p>
+
+    <h2 id="components">Aansluitingen per onderdeel</h2>
+    <p>De GPIO-nummers hieronder zijn BCM-nummers; fysieke pinnummers worden
+      apart vermeld. Haal de spanning eraf voordat je bedrading aanpast. Het
+      diagram is een leidraad, geen bevestiging van de fysieke opstelling.</p>
+    <h3 id="pi5">Raspberry Pi 5 en T-Cobbler</h3>
+    <p>De Pi 5 draait de hoofdapplicatie. De T-Cobbler brengt de 40-pins header
+      naar het breadboard. Gebruik pin 1 of 17 voor de 3,3V-rail, pin 2 of 4
+      voor de 5V-rail en een gemeenschappelijke massa, bijvoorbeeld pin 6.
+      Sluit nooit 5 V aan op een GPIO-pin.</p>
+    <h3 id="bh1750">BH1750-lichtsensor</h3>
+    <p>Verbind VCC met 3,3 V en GND met de gemeenschappelijke massa. SDA gaat
+      naar GPIO 2 (fysieke pin 3); SCL gaat naar GPIO 3 (pin 5). Het I2C-adres
+      is <code>0x23</code>. Laat ADDR open of verbind deze met GND voor dat adres.
+      De code leest digitale luxwaarden via I2C.</p>
+    <h3 id="mcp3008">MCP3008 analoog-digitaalconverter</h3>
+    <p>Verbind VDD en VREF met 3,3 V en AGND en DGND met massa. Verbind CLK met
+      GPIO 11 (fysieke pin 23), DOUT met GPIO 9 (pin 21), DIN met GPIO 10
+      (pin 19) en CS/SHDN met GPIO 25 (pin 22). De code stuurt CS handmatig aan.
+      CH0 leest de potentiometer; CH1 leest de LM35.</p>
+    <h3 id="potentiometer">Potentiometer van 10 kΩ</h3>
+    <p>Verbind de buitenste aansluitingen met massa en 3,3 V; verbind de wiper
+      (middelste aansluiting) met MCP3008 CH0. Door te draaien selecteer je een
+      cijfer. De code gebruikt een kleine hysteresezone om flikkeren bij
+      cijfergrenzen te beperken.</p>
+    <h3 id="lm35">LM35-temperatuursensor</h3>
+    <p>De 3,3V-voeding is voor de geselecteerde sensor geverifieerd. Verbind GND
+      met gemeenschappelijke massa en Vout met MCP3008 CH1. De applicatie zet
+      de analoge meting om volgens de LM35-schaal in de code. Controleer de
+      pinvolgorde van de gebruikte behuizing voordat je deze aansluit.</p>
+    <h3 id="button">Bevestigingsknop voor de pincode</h3>
+    <p>Verbind één kant van de knop met GPIO 4 (fysieke pin 7) en de andere
+      kant met massa. De applicatie activeert een interne pull-up; de ingang
+      is daarom actief-laag: losgelaten is hoog, ingedrukt is laag.</p>
+
+    <h2 id="oled">OLED-aansluitingen (SPI1)</h2>
+    <p>De SSD1306 is een SPI-module met zes pinnen en zonder CS-aansluiting.
+      De labels SDA en SCL op de module betekenen hier SPI-data en SPI-klok,
+      niet I2C. Er is geen MISO-aansluiting of I2C-adres voor deze SPI-verbinding.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>OLED-label</th><th>Pi-signaal</th><th>Fysieke headerpin</th></tr></thead>
+        <tbody>
+          <tr><td>VCC</td><td>3,3 V</td><td>1 of 17</td></tr>
+          <tr><td>GND</td><td>Massa</td><td>Bijvoorbeeld pin 6</td></tr>
+          <tr><td>RES / RST</td><td>GPIO 16</td><td>36</td></tr>
+          <tr><td>DC</td><td>GPIO 6</td><td>31</td></tr>
+          <tr><td>SDA / DIN (data)</td><td>GPIO 20 / MOSI1</td><td>38</td></tr>
+          <tr><td>SCL / CLK (klok)</td><td>GPIO 21 / SCLK1</td><td>40</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p><code>Display()</code> opent SPI1 met
+      <code>busio.SPI(clock=board.D21, MOSI=board.D20)</code>. De MCP3008 gebruikt
+      SPI0 en heeft een aparte chipselect op GPIO 25.</p>
+
+    <h2 id="pico-node">Pico-perimeter-node en sonar</h2>
+    <p>De repositorydocumentatie beschrijft een Raspberry Pi Pico 2 W met
+      RCWL-9610A; het nieuwste diagram noemt een Pico W met HC-SR04. Bevestig
+      welke hardware werkelijk wordt gebruikt voordat je de voeding aansluit.
+      De firmware gebruikt GP27 voor TRIG en GP28 voor ECHO; die signalen komen
+      overeen met fysieke pinnen 32 en 34. De beoogde voeding volgens de
+      projectdocumentatie is 3,3 V op pin 36 en GND op pin 38.</p>
+    <p>De Pico publiceert afstand via Wi-Fi en MQTT naar
+      <code>vault/perimeter/distance</code>. Controleer de spanningsniveaus van
+      de exacte sonarmodule. Een 5V-ECHO-signaal mag niet rechtstreeks naar een
+      Pico-GPIO; gebruik dan level shifting.</p>
+
+    <h2 id="actuators">Actuatoren en indicatoren</h2>
+    <h3 id="relay">5V-relaismodule</h3>
+    <p>Sluit VCC van de relaimodule aan op 5 V en GND op de gemeenschappelijke massa. De IN-ingang
+      gaat naar GPIO 24 (fysieke pin 18) en is actief-laag: GPIO laag schakelt
+      het relais in. De getoonde contactbedrading voert 5 V van COM via NO
+      naar de motorvoeding van de stepperdriver. Controleer de ingangseisen en
+      contactwaarden van de gebruikte relaimodule.</p>
+    <h3 id="stepper">ULN2003-driver en 28BYJ-48-steppermotor</h3>
+    <p>Verbind ULN2003 IN1/IN2/IN3/IN4 met GPIO 17/27/22/23
+      (fysieke pinnen 11/13/15/16). Driver en motor gebruiken de geschakelde
+      5V-voeding vanaf relaiscontact NO en delen massa met de Pi. De ULN2003
+      stuurt de motorwikkelingen aan; sluit de motor niet rechtstreeks op GPIO aan.</p>
+    <h3 id="rgb-led">RGB-statusled</h3>
+    <p>De beschreven LED is common-cathode: verbind de gemeenschappelijke
+      aansluiting met massa. Verbind rood, groen en blauw elk via een eigen
+      weerstand van 220 Ω met GPIO 12, 13 en 26 (fysieke pinnen 32, 33 en 37).
+      Controleer de pinvolgorde en de geschiktheid van de weerstanden voor de
+      gebruikte LED.</p>
+    <h3 id="audio">Microfoon en Bluetooth-speaker</h3>
+    <p>Deze randapparatuur is niet als GPIO-aansluiting in het schema opgenomen.
+      De USB-microfoon wordt gebruikt door het optionele Vosk-spraakpad; de
+      Bluetooth-speaker speelt audio-alarmen af. De tweede factor is standaard
+      overgeslagen in de huidige configuratie.</p>
+
+    <h2>Resterende verschillen in het diagram</h2>
+    <ul>
+      <li>De Pi-aansluitingen komen overeen met de code. In het Pi-blok staat
+        <code>MOSO1</code>; dit moet <strong>MOSI1</strong> zijn.</li>
+      <li>De Pico-pinnen 32/34 naar GP27/GP28 kloppen, maar model en sensornaam
+        verschillen tussen diagram en repositorydocumentatie.</li>
+      <li>Het diagram geeft sonar-VCC en ECHO als 3,3 V aan, terwijl de
+        kleurlegenda ECHO nog “5 V” noemt. Maak de legenda gelijk aan de
+        geselecteerde sensor en de geverifieerde spanningsniveaus.</li>
+    </ul>
+    <h2>Nieuwste aansluitdiagram</h2>
+    <p><a href="../assets/connection-schema.png">Open de volledige afbeelding</a>
+      of <a href="../assets/connection-schema.drawio">download het bewerkbare draw.io-bestand</a>.
+      Beide zijn bijgewerkt op 8 november 2026.</p>
+    <figure>
+      <a href="../assets/connection-schema.png"><img src="../assets/connection-schema.png"
+        alt="Aansluitschema van Smart Vault met Pico-perimeter-node, Pi-sensoren, display, relais, stepper en RGB-led."></a>
+      <figcaption>Fysieke bedrading is niet onafhankelijk geïnspecteerd.</figcaption>
+    </figure>
+    <h2>Elektrische controle</h2>
+    <p>Gebruik 3,3V-compatibele GPIO-signalen. De 3,3V-voeding voor de gekozen
+      LM35 is geverifieerd. Controleer de MCP3008-referentie, sensortoevoer,
+      gemeenschappelijke massa en LED-weerstanden aan de hand van de gebruikte
+      onderdelen. Motoren moeten via een geschikte driver worden gevoed, niet
+      via GPIO.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Broncode op GitHub</a></footer>
+</body>
+</html>

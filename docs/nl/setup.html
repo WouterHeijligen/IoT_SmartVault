@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Installatie</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="index.html">Overzicht</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html" aria-current="page">Installatie</a>
+      <a href="code.html">Code</a>
+      <a href="development.html">Ontwikkeling</a>
+    </nav>
+    <p class="language-switch" aria-label="Taal">
+      <a href="../setup.html" lang="en">English</a> |
+      <span aria-current="page">Nederlands</span>
+    </p>
+  </header>
+  <main>
+    <h1>Raspberry Pi installeren</h1>
+    <p>De applicatie is bedoeld voor een Raspberry Pi met GPIO-toegang, SPI en
+      I2C. Ze werkt niet ongewijzigd op een gewone Windows-laptop. Bekijk de
+      <a href="hardware.html">hardware-informatie</a> voordat je onderdelen aansluit.</p>
+
+    <h2>1. De Pi voorbereiden</h2>
+    <p>Gebruik Raspberry Pi OS met Python 3, Git en ondersteuning voor Python
+      virtual environments. Schakel SPI en I2C in via
+      <code>sudo raspi-config</code> onder Interface Options en volg eventuele
+      herstartinstructies.</p>
+
+    <h2>Architectuur en protocollen</h2>
+    <p>De Pi 5 is de centrale besturing. I2C leest de BH1750; SPI0 verbindt de
+      MCP3008-ADC; SPI1 stuurt de OLED aan. De Pico stuurt perimetermetingen via
+      Wi-Fi en MQTT naar Mosquitto op de Pi. De Pi publiceert daarnaast naar de
+      ThingSpeak-MQTT-dienst en verstuurt meldingen via HTTPS naar ntfy.
+      Lokale sensorbussen en netwerkberichten hebben verschillende functies.</p>
+    <p>Lees de <a href="code.html#protocols">protocoluitleg</a> voor de werking
+      van elke verbinding in de kluis en voor externe referenties. De lokale
+      Mosquitto- en huidige ThingSpeak-MQTT-verbinding gebruiken onversleutelde
+      poort 1883. Gebruik deze alleen op een vertrouwd, afgesloten projectnetwerk;
+      dit is geen veilige productieconfiguratie.</p>
+
+    <h3 id="spi1">SPI1 configureren voor de OLED</h3>
+    <p>De MCP3008 gebruikt SPI0 en de OLED gebruikt SPI1. Op recente versies van
+      Raspberry Pi OS hoort de SPI1-overlay in een toepasselijke sectie
+      (bijvoorbeeld <code>[all]</code>) van
+      <code>/boot/firmware/config.txt</code>. Oudere installaties gebruiken soms
+      <code>/boot/config.txt</code>:</p>
+    <pre><code>dtoverlay=spi1-1cs</code></pre>
+    <p>Controleer na een geplande herstart of <code>/dev/spidev1.0</code> bestaat
+      en toegankelijk is voor de applicatiegebruiker. Deze overlay schakelt SPI1
+      in op GPIO21 (SCLK), GPIO20 (MOSI) en GPIO19 (MISO); de OLED gebruikt alleen
+      SCLK en MOSI. GPIO18 is de standaard CS0 van de controller, maar deze OLED
+      heeft geen CS-draad. Voorkom conflicten op GPIO18/19. De blauwe RGB-led
+      gebruikt GPIO26; GPIO19 is SPI1 MISO en is niet op deze OLED aangesloten.</p>
+    <p>Vervang deze overlay niet door SPI1-overlays met twee of drie chipselects
+      zonder eerst de pinconflicten te controleren: standaard claimen die ook
+      GPIO17 (stepper) en GPIO16 (OLED-reset). Bekijk de
+      <a href="https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README">officiële Raspberry Pi-overlayreferentie</a>.</p>
+
+    <h2>2. De applicatie installeren</h2>
+    <p>Voer deze opdrachten uit in een terminal op de Raspberry Pi:</p>
+    <pre><code>git clone https://github.com/WouterHeijligen/IoT_SmartVault.git
+cd IoT_SmartVault
+python3 -m venv env --system-site-packages
+source env/bin/activate
+python -m pip install -r requirements.txt</code></pre>
+    <p>Voeg de lokale map <code>env/</code> niet toe aan Git. Hardwareafhankelijkheden
+      kunnen ook OS-pakketten vereisen die passen bij de Pi en OS-versie.</p>
+
+    <h2>3. Omgevingsinstellingen configureren</h2>
+    <p>Maak in de repositoryroot een lokaal bestand <code>.env</code> met je eigen
+      ThingSpeak MQTT-apparaatgegevens en kanaal-ID. <code>NTFY_TOPIC</code> is
+      optioneel en bepaalt het <a href="https://ntfy.sh">ntfy.sh</a>-topic voor
+      pushmeldingen. Abonneer je daarop in de ntfy-app op je telefoon.</p>
+    <pre><code>THINGSPEAK_MQTT_CLIENT_ID=your_client_id
+THINGSPEAK_MQTT_USERNAME=your_username
+THINGSPEAK_MQTT_PASSWORD=your_password
+THINGSPEAK_CHANNEL_ID=your_channel_id
+NTFY_TOPIC=your_own_topic_name</code></pre>
+    <p>Git negeert dit bestand. Zet nooit echte inloggegevens in deze pagina's
+      of in GitHub Actions. Voor de statische documentatie zijn geen ThingSpeak-
+      geheimen nodig. Zonder ThingSpeak-gegevens blijft de kluis draaien en
+      print hij telemetrie in plaats van die te publiceren.</p>
+    <p>De MQTT-client gebruikt <code>mqtt3.thingspeak.com:1883</code> en
+      publiceert naar <code>channels/&lt;channel_id&gt;/publish</code>. De velden
+      zijn: <code>field1</code> licht (lux), <code>field2</code> temperatuur
+      (&deg;C), <code>field3</code> perimeterafstand (cm), <code>field4</code>
+      kluisstatus (0 vergrendeld, 1 tweede factor, 2 open, 3 alarm, 4 blokkering)
+      en <code>field5</code> het geselecteerde potentiometercijfer (0-9, na
+      hysterese, zoals op de OLED).</p>
+    <p>Schakel veld 5 in bij de ThingSpeak-kanaalinstellingen en noem het
+      <strong>Selected digit (0-9)</strong>. Dit is geen weerstand of ruwe
+      ADC-waarde. De waarde wordt op het bestaande telemetrie-interval van
+      15 seconden verzonden, niet bij elke draaibeweging. Het geselecteerde
+      PIN-cijfer gaat dus naar de cloud.</p>
+    <p>Kies voor de sonargrafiek <code>field3</code> en noem de as
+      <strong>Distance (cm)</strong>. De afstand wordt niet omgezet naar een
+      statuscode; <code>field4</code> toont de kluisstatus, niet de meting van
+      de sonar.</p>
+    <aside class="notice"><strong>Let op:</strong> de huidige MQTT-verbindingen
+      gebruiken onversleutelde poort 1883. Beschouw dit prototype niet als een
+      veilige productieconfiguratie.</aside>
+
+    <h2>4. De kluis starten</h2>
+    <p>De hardware-preflight is <code>python3 preflight_check.py</code> vanuit de
+      repositoryroot. Dit script leest sensoren actief uit en bedient OLED, LED,
+      relais en motor. Voer het alleen uit nadat de bedrading is gecontroleerd
+      en de mechanische opstelling veilig is. De aparte map <code>tests/</code>
+      bevat host-unit-tests, niet de hardware-preflight.</p>
+    <pre><code>source env/bin/activate
+python3 main.py</code></pre>
+    <p>Bij het starten initialiseert de applicatie direct de hardware, inclusief
+      relais- en stepper-GPIO-uitgangen. Voer dit alleen uit met gecontroleerde
+      bedrading en een veilige mechanische opstelling. Draai de potentiometer
+      naar een cijfer en druk op de knop om dit te bevestigen; herhaal dat voor
+      alle drie de cijfers. De PIN, drempels, blokkeringstijd en voice-bypass
+      staan bovenaan in <code>vault_state.py</code>. Stop met
+      <kbd>Ctrl+C</kbd> en verlaat de omgeving met <code>deactivate</code>.</p>
+    <p>Spraakverificatie gebruikt standaard het Engelse model in
+      <code>model-en/</code> en het ingestelde gesproken wachtwoord.
+      Als <code>VOSK_MODEL</code> in de omgeving of in <code>.env</code> is
+      ingesteld, vervangt dat het modelpad. Verwijder die instelling of verwijs
+      naar je map <code>model-en/</code>.</p>
+    <p>De Pico 2 W publiceert de afstand naar een MQTT-broker op de Pi op topic
+      <code>vault/perimeter/distance</code>. De kluis abonneert zich op
+      <code>127.0.0.1:1883</code>. Installeer en start bijvoorbeeld Mosquitto;
+      zonder broker meldt de kluis een waarschuwing en gaat verder.</p>
+
+    <h2>Pico 2 W-perimeter-node</h2>
+    <ol>
+      <li>Installeer CircuitPython 11.x op de Pico 2 W en kopieer
+        <code>pico_2w/code.py</code> naar de <code>CIRCUITPY</code>-schijf.</li>
+      <li>Kopieer <code>pico_2w/settings.toml.example</code> naar
+        <code>settings.toml</code> op de schijf en stel de Wi-Fi-naam, het
+        wachtwoord en het IP-adres van de Pi in (<code>hostname -I</code>).
+        Houd dit bestand buiten Git.</li>
+      <li>Kopieer <code>adafruit_hcsr04</code>, <code>adafruit_minimqtt</code>,
+        <code>adafruit_connection_manager</code> en <code>adafruit_ticks</code>
+        uit de Adafruit CircuitPython-bundle naar <code>lib/</code>.</li>
+      <li>Configureer Mosquitto zodat de Pico verbinding mag maken: voeg
+        <code>listener 1883</code> en <code>allow_anonymous true</code> toe aan
+        <code>/etc/mosquitto/conf.d/pico.conf</code> en voer
+        <code>sudo systemctl restart mosquitto</code> uit. Doe dit alleen op een
+        afgesloten projectnetwerk.</li>
+      <li>Controleer met <code>mosquitto_sub -t vault/perimeter/distance</code>.
+        Pi en Pico moeten op hetzelfde Wi-Fi-netwerk zitten. De bedrading staat
+        op de <a href="hardware.html">hardwarepagina</a>.</li>
+    </ol>
+
+    <h2>De potentiometer uitlezen</h2>
+    <p>Adafruit's <code>AnalogIn.value</code> is opgeschaald naar 16 bit, hoewel
+      de MCP3008 een 10-bit-ADC is. <code>sensors.py</code> schuift de waarde
+      terug naar 0-1023 en <code>main.py</code> zet die om naar cijfers 0-9 met
+      een kleine dode zone om flikkeren bij cijfergrenzen te voorkomen.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Broncode op GitHub</a></footer>
+</body>
+</html>

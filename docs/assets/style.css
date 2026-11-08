@@ -16,6 +16,8 @@ header { display: flex; flex-wrap: wrap; align-items: center; justify-content: s
 .brand { color: var(--text); font-size: 1.4rem; font-weight: 800; text-decoration: none; }
 nav { display: flex; flex-wrap: wrap; gap: 1rem; }
 nav a[aria-current="page"] { font-weight: 800; text-decoration-thickness: 3px; }
+.language-switch { margin: 0; max-width: none; color: var(--muted); font-size: 0.9rem; }
+.language-switch [aria-current="page"] { font-weight: 800; }
 a { color: var(--link); text-underline-offset: 0.2em; }
 a:focus-visible { outline: 3px solid var(--link); outline-offset: 4px; }
 main { min-height: 75vh; }

@@ -3,32 +3,41 @@ Source: docs\setup.html
 
 # Raspberry Pi setup
 
-The application targets a Raspberry Pi with GPIO access, SPI, and I2C. It cannot run unchanged on a regular Windows laptop. Check the hardware notes (hardware.html) before connecting components.
+The application targets a Raspberry Pi with GPIO access, SPI, and I2C. It cannot run unchanged on a regular Windows laptop. Check the hardware notes before connecting components.
 
 ## 1. Prepare the Pi
 
 Use Raspberry Pi OS with Python 3, Git, and Python virtual environment support. Enable SPI and I2C using sudo raspi-config under Interface Options; follow any restart instructions it gives.
 
+## Architecture and protocol overview
+
+The Pi 5 is the main controller. I2C reads the BH1750; SPI0 connects the MCP3008 ADC; SPI1 drives the OLED. The Pico sends perimeter readings over Wi-Fi and MQTT to Mosquitto on the Pi. The Pi separately publishes to the ThingSpeak MQTT service and sends notifications to ntfy using HTTPS. Local sensor buses and network messaging serve different purposes.
+
+Read the protocol walkthrough for how each link moves data in the vault and for external references. The local Mosquitto and current ThingSpeak MQTT connections use unencrypted port 1883. Use them only on a trusted, closed project network; this is not a secure deployment.
+
 ### OLED SPI1 configuration
 
 The MCP3008 uses SPI0 and the OLED uses SPI1. On recent Raspberry Pi OS, the SPI1 overlay belongs in an applicable section (for example [all]) of /boot/firmware/config.txt. Older installations may use /boot/config.txt:
 
+```
 dtoverlay=spi1-1cs
+```
 
 After an operator-planned reboot, check that /dev/spidev1.0 exists and is accessible to the application user. This overlay enables SPI1 on GPIO21 (SCLK), GPIO20 (MOSI) and GPIO19 (MISO); the OLED only needs SCLK and MOSI. GPIO18 is the default controller CS0, but this OLED has no CS wire. Leave GPIO18/19 free of conflicting uses. The current RGB LED uses GPIO26 for blue; GPIO19 is SPI1 MISO and is not connected to this OLED.
 
-Do not substitute the two- or three-CS SPI1 overlays without reviewing pin conflicts: their defaults also claim GPIO17 (stepper) and GPIO16 (OLED reset). See the official
-Raspberry Pi overlay reference (https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README).
+Do not substitute the two- or three-CS SPI1 overlays without reviewing pin conflicts: their defaults also claim GPIO17 (stepper) and GPIO16 (OLED reset). See the official Raspberry Pi overlay reference (https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README).
 
 ## 2. Install the application
 
 Run these commands in a terminal on the Raspberry Pi:
 
+```
 git clone https://github.com/WouterHeijligen/IoT_SmartVault.git
 cd IoT_SmartVault
 python3 -m venv env --system-site-packages
 source env/bin/activate
 python -m pip install -r requirements.txt
+```
 
 Do not add the local env/ directory to Git. Hardware-specific dependencies may also require OS packages appropriate to your Pi and OS version.
 
@@ -36,11 +45,13 @@ Do not add the local env/ directory to Git. Hardware-specific dependencies may a
 
 Create a local .env file in the repository root using your own ThingSpeak MQTT device credentials and channel ID. NTFY_TOPIC is optional and selects the ntfy.sh (https://ntfy.sh) topic for push notifications; subscribe to it in the ntfy app on your phone.
 
+```
 THINGSPEAK_MQTT_CLIENT_ID=your_client_id
 THINGSPEAK_MQTT_USERNAME=your_username
 THINGSPEAK_MQTT_PASSWORD=your_password
 THINGSPEAK_CHANNEL_ID=your_channel_id
 NTFY_TOPIC=your_own_topic_name
+```
 
 The file is ignored by Git. Never put real credentials into these pages or GitHub Actions. The static documentation needs no ThingSpeak secrets. Without ThingSpeak credentials the vault still runs and prints its telemetry instead of publishing it.
 
@@ -50,32 +61,32 @@ Enable field 5 in the ThingSpeak channel settings and label it Selected digit (0
 
 For the sonar chart, select field3 and label the axis Distance (cm). The distance is not converted to a status code; field4 shows the vault state, not the sonar measurement.
 
-Note: the configured MQTT transport is unencrypted; do not treat this prototype as a secure deployment.
-
 ## 4. Run the vault
 
 The hardware preflight is python3 preflight_check.py from the repository root. It actively reads sensors and operates the OLED, LED, relay and motor; run it only with reviewed wiring and a safe mechanical setup. The separate tests/ directory contains host-side unit tests, not the hardware preflight.
 
+```
 source env/bin/activate
 python3 main.py
+```
 
 Startup initializes the hardware immediately, including relay and stepper GPIO outputs. Only run with reviewed wiring and a safe mechanical setup. Turn the potentiometer to a digit and press the button to confirm it; repeat for all three digits. The PIN, thresholds, lockout time and voice bypass are set at the top of vault_state.py. Press Ctrl+C to stop; use deactivate to leave the environment.
 
-Voice verification uses the English model in model-en/ by default and the spoken passphrase open. If VOSK_MODEL is configured in the environment or .env, it overrides that model path; remove the override or point it to your model-en/ folder.
+Voice verification uses the English model in model-en/ by default and the configured spoken passphrase. If VOSK_MODEL is configured in the environment or .env, it overrides that model path; remove the override or point it to your model-en/ folder.
 
 The Pico 2 W perimeter node publishes its distance to an MQTT broker running on the Pi (topic vault/perimeter/distance); the vault subscribes on 127.0.0.1:1883. Install and start a broker such as Mosquitto; without one the vault logs a warning and continues.
 
 ## Pico 2 W perimeter node
 
-1. Flash CircuitPython 11.x on the Pico 2 W and copy pico_2w/code.py to the CIRCUITPY drive.
+- Flash CircuitPython 11.x on the Pico 2 W and copy pico_2w/code.py to the CIRCUITPY drive.
 
-2. Copy pico_2w/settings.toml.example to settings.toml on the drive and set the Wi-Fi name, password and the Pi's IP address (hostname -I). Keep this file out of Git.
+- Copy pico_2w/settings.toml.example to settings.toml on the drive and set the Wi-Fi name, password and the Pi's IP address (hostname -I). Keep this file out of Git.
 
-3. Copy adafruit_hcsr04, adafruit_minimqtt, adafruit_connection_manager and adafruit_ticks from the Adafruit CircuitPython bundle to lib/.
+- Copy adafruit_hcsr04, adafruit_minimqtt, adafruit_connection_manager and adafruit_ticks from the Adafruit CircuitPython bundle to lib/.
 
-4. Let Mosquitto accept the Pico: add listener 1883 and allow_anonymous true in /etc/mosquitto/conf.d/pico.conf and run sudo systemctl restart mosquitto. Only do this on a closed project network.
+- Let Mosquitto accept the Pico: add listener 1883 and allow_anonymous true in /etc/mosquitto/conf.d/pico.conf and run sudo systemctl restart mosquitto. Only do this on a closed project network.
 
-5. Check with mosquitto_sub -t vault/perimeter/distance. The Pi and Pico must be on the same Wi-Fi network. Wiring is listed on the hardware page (hardware.html).
+- Check with mosquitto_sub -t vault/perimeter/distance. The Pi and Pico must be on the same Wi-Fi network. Wiring is listed on the hardware page.
 
 ## Reading the potentiometer
 

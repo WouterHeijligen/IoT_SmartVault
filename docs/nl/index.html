@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Smart Vault-teamproject: sensoren, vergrendeling, alarmen en telemetrie met ThingSpeak.">
+  <title>Smart Vault | Overzicht</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="index.html" aria-current="page">Overzicht</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html">Installatie</a>
+      <a href="code.html">Code</a>
+      <a href="development.html">Ontwikkeling</a>
+    </nav>
+    <p class="language-switch" aria-label="Taal">
+      <a href="../index.html" lang="en">English</a> |
+      <span aria-current="page">Nederlands</span>
+    </p>
+  </header>
+  <main>
+    <p class="eyebrow">IoT Essentials / Teamproject</p>
+    <h1>Een verbonden kluis, component voor component opgebouwd.</h1>
+    <p>Smart Vault is een Raspberry Pi-prototype voor sensormeting, fysieke
+      besturing en cloudtelemetrie. Het ontwerp combineert een draaiknop voor
+      cijferinvoer, spraakverificatie en sabotagebewaking. Het is een educatief
+      prototype, geen productieklaar beveiligingssysteem.</p>
+    <aside class="notice"><strong>Werk in uitvoering.</strong> Deze pagina's
+      maken onderscheid tussen de huidige broncode en het geplande ontwerp.
+      De nieuwste aansluittekening is opgenomen; resterende verschillen staan
+      op de hardwarepagina.</aside>
+    <h2>Werking van de applicatie</h2>
+    <p><code>main.py</code> start taken voor knop, sensoren/display, actuatoren
+      en cloud die één gedeeld statusobject (<code>vault_state.py</code>) gebruiken,
+      plus een MQTT-abonnee voor de perimeterafstand van de Pico. Als
+      spraakverificatie is ingeschakeld, start ook de spraakthread.</p>
+    <ol>
+      <li><strong>Code invoeren:</strong> draai de potentiometer naar een cijfer
+        (0-9) en druk op de knop op GPIO 4 om het te bevestigen. Drie cijfers
+        vormen de pincode.</li>
+      <li><strong>Juiste pincode:</strong> het relais voedt de stappenmotor, het
+        slot opent, de LED wordt groen en het relais schakelt daarna weer uit.
+        Druk op de knop om de kluis te sluiten. Met
+        <code>BYPASS_VOICE_2FA = False</code> wacht de kluis eerst op Vosk-
+        spraakherkenning; daarvoor zijn een ingesteld model en microfoon nodig.</li>
+      <li><strong>Onjuiste pincode:</strong> het OLED toont het aantal resterende
+        pogingen en de LED knippert drie seconden. Na drie foute codes volgt
+        tien seconden blokkering, een korte sirene en één ntfy-melding.</li>
+      <li><strong>Alarm:</strong> een te hoge temperatuur of licht in een
+        gesloten kluis activeert het alarm, de sirene en een pushmelding.
+        De knop reset het alarm.</li>
+      <li><strong>Telemetrie:</strong> licht, temperatuur, perimeterafstand en
+        kluisstatus worden periodiek naar ThingSpeak gepubliceerd.</li>
+    </ol>
+    <p>De LED knippert rood/uit bij zowel een foute code als een alarm.
+      De huidige testdrempels zijn 50 lux en 30 &deg;C; ze staan in
+      <code>vault_state.py</code>.</p>
+    <h2>Architectuur en protocollen</h2>
+    <p>De Raspberry Pi 5 is de centrale besturing: hij leest lokale sensoren,
+      werkt <code>VaultState</code> bij, kiest acties en publiceert status.
+      De Pico is een aparte perimeter-node die afstandsmetingen naar de Pi stuurt.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Verbinding</th><th>Protocol / bus</th><th>Rol in het project</th></tr></thead>
+        <tbody>
+          <tr><td>Pi 5 naar BH1750</td><td>I2C, GPIO 2/3</td><td>Digitale lichtmetingen uitlezen.</td></tr>
+          <tr><td>Pi 5 naar MCP3008</td><td>SPI0, GPIO 11/9/10; CS GPIO 25</td><td>Analoge spanningen van potentiometer en LM35 omzetten.</td></tr>
+          <tr><td>Pi 5 naar SSD1306 OLED</td><td>SPI1, GPIO 21/20</td><td>Displaygegevens verzenden; reset en data/command gebruiken GPIO 16/6.</td></tr>
+          <tr><td>Pico naar Pi</td><td>Wi-Fi en MQTT via lokale Mosquitto</td><td>Afstand publiceren op <code>vault/perimeter/distance</code>.</td></tr>
+          <tr><td>Pi naar ThingSpeak</td><td>MQTT</td><td>Telemetrie publiceren volgens het ingestelde interval.</td></tr>
+          <tr><td>Pi naar ntfy</td><td>HTTPS-verzoek</td><td>Alarm- en blokkeringmeldingen versturen.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>I2C en SPI verbinden lokale componenten; MQTT vervoert berichten tussen
+      netwerkclients. Dit zijn verschillende lagen. Zie de
+      <a href="code.html#protocols">protocoluitleg</a> en
+      <a href="hardware.html#components">aansluitingen per onderdeel</a>.</p>
+    <h2>Implementatiestatus</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Onderdeel</th><th>Huidige broncode</th></tr></thead>
+        <tbody>
+          <tr><td>Sensoren</td><td>LM35 via MCP3008 CH1, potentiometer via CH0 en BH1750 via I2C.</td></tr>
+          <tr><td>Display en indicator</td><td>SSD1306 op aparte SPI1 (SCLK GPIO21, MOSI GPIO20) en een PWM-RGB-led. De ADC blijft op SPI0.</td></tr>
+          <tr><td>Code-invoer</td><td>Driecijferige potentiometer-pincode met pogingteller en blokkering van 10 seconden.</td></tr>
+          <tr><td>Slot</td><td>Relais-interlock en stappenmotor aangestuurd door de kluisstatus.</td></tr>
+          <tr><td>Alarmen</td><td>Brand- en lichtdetectie, sirene en ntfy-pushmelding.</td></tr>
+          <tr><td>ThingSpeak</td><td>MQTT-telemetrie met gegevens uit <code>.env</code>.</td></tr>
+          <tr><td>Pico-perimeter-node</td><td>CircuitPython publiceert sonarafstand op <code>vault/perimeter/distance</code>; documentatie en diagram verschillen over het exacte sensormodel.</td></tr>
+          <tr><td>Spraakherkenning</td><td>Vosk-module aanwezig; vereist een ingesteld model en microfoon en is niet onafhankelijk op hardware getest.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h2>Begin hier</h2>
+    <p>Bekijk de <a href="hardware.html">pinindeling en aansluittekening</a>,
+      volg de <a href="setup.html">installatiestappen</a> of lees hoe je de
+      <a href="development.html">documentatie bijwerkt en publiceert</a>.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Broncode op GitHub</a></footer>
+</body>
+</html>

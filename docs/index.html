@@ -17,6 +17,10 @@
       <a href="code.html">Code</a>
       <a href="development.html">Development</a>
     </nav>
+    <p class="language-switch" aria-label="Language">
+      <span aria-current="page">English</span> |
+      <a href="nl/index.html" lang="nl">Nederlands</a>
+    </p>
   </header>
   <main>
     <p class="eyebrow">IoT Essentials / Team project</p>
@@ -29,44 +33,68 @@
       the current source code from the planned design. The latest connection diagram
       is included; remaining code/wiring differences are listed on the hardware page.</aside>
     <h2>Application flow</h2>
-    <p><code>main.py</code> starts four threads that share one state object
-      (<code>vault_state.py</code>), plus a subscriber for the Pico perimeter distance.</p>
+    <p><code>main.py</code> starts button, sensor/display, actuator, and cloud
+      workers that share one state object (<code>vault_state.py</code>), plus a
+      subscriber for the Pico perimeter distance. With voice verification enabled,
+      it also starts the voice worker.</p>
     <ol>
       <li><strong>Code entry:</strong> turn the potentiometer to pick a digit (0-9) and press the
         button on GPIO 4 to confirm it. Three digits form the PIN.</li>
       <li><strong>Correct PIN:</strong> the relay powers the stepper, the lock opens, the LED turns green
         and the relay switches off again. Pressing the button closes the vault.
-        With <code>BYPASS_VOICE_2FA = False</code> the vault first waits for a spoken
-        passphrase (not implemented yet).</li>
+        With <code>BYPASS_VOICE_2FA = False</code> the vault first waits for Vosk
+        speech recognition; a configured model and microphone are required.</li>
       <li><strong>Wrong PIN:</strong> the OLED shows how many attempts remain and the LED runs the
-        zwaailicht for 3 seconds. After 3 wrong codes the vault is locked for 5 minutes,
+        warning blink for 3 seconds. After 3 wrong codes the vault is locked for 10 seconds,
         plays a short siren and sends one ntfy push notification.</li>
       <li><strong>Alarm:</strong> a temperature above the fire threshold, or light inside a closed vault,
-        starts the alarm: zwaailicht, a repeating siren and a push notification.
+        starts the alarm: warning light, repeating siren and push notification.
         The button resets it.</li>
       <li><strong>Telemetry:</strong> every 15 seconds light, temperature, perimeter distance and
         vault status are published to ThingSpeak.</li>
     </ol>
     <p>The LED blinks red/off for both an incorrect PIN and an alarm.
-      Thresholds are test values (light 5000 lux, temperature 25 &deg;C) and are set in
+      Current test thresholds are light 50 lux and temperature 30 &deg;C, set in
       <code>vault_state.py</code>.</p>
+    <h2>System architecture and protocols</h2>
+    <p>The Raspberry Pi 5 is the central controller: it reads local sensors, updates
+      the shared <code>VaultState</code>, selects outputs, and publishes status.
+      The Pico is a separate perimeter node that sends distance measurements to the Pi.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Link</th><th>Protocol / bus</th><th>Role in this project</th></tr></thead>
+        <tbody>
+          <tr><td>Pi 5 to BH1750</td><td>I2C, GPIO 2/3</td><td>Read digital light measurements.</td></tr>
+          <tr><td>Pi 5 to MCP3008</td><td>SPI0, GPIO 11/9/10; CS GPIO 25</td><td>Convert potentiometer and LM35 analog voltages.</td></tr>
+          <tr><td>Pi 5 to SSD1306 OLED</td><td>SPI1, GPIO 21/20</td><td>Send display data; reset and data/command use GPIO 16/6.</td></tr>
+          <tr><td>Pico to Pi</td><td>Wi-Fi and MQTT via local Mosquitto</td><td>Publish distance on <code>vault/perimeter/distance</code>.</td></tr>
+          <tr><td>Pi to ThingSpeak</td><td>MQTT</td><td>Publish telemetry at the configured interval.</td></tr>
+          <tr><td>Pi to ntfy</td><td>HTTPS request</td><td>Send alarm and lockout notifications.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>I2C and SPI connect local components; MQTT carries messages between network
+      clients. These are different layers and are not interchangeable. See the
+      <a href="code.html#protocols">protocol walkthrough</a> and
+      <a href="hardware.html#components">part-by-part connections</a>.</p>
     <h2>Implementation status</h2>
     <div class="table-scroll">
       <table>
         <thead><tr><th>Component</th><th>Current source</th></tr></thead>
         <tbody>
           <tr><td>Sensors</td><td>LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.</td></tr>
-          <tr><td>Display and indicator</td><td>SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with zwaailicht effect. The ADC stays on SPI0.</td></tr>
-          <tr><td>Code entry</td><td>3-digit potentiometer PIN with retry counter and 5 minute lockout.</td></tr>
+          <tr><td>Display and indicator</td><td>SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with warning-light effect. The ADC stays on SPI0.</td></tr>
+          <tr><td>Code entry</td><td>3-digit potentiometer PIN with retry counter and 10-second lockout.</td></tr>
           <tr><td>Lock mechanism</td><td>Relay interlock and stepper driven by the vault state.</td></tr>
           <tr><td>Alarms</td><td>Fire and tamper (light) detection, siren and ntfy push notification.</td></tr>
           <tr><td>ThingSpeak</td><td>MQTT telemetry using credentials from <code>.env</code>.</td></tr>
-          <tr><td>Pico perimeter node</td><td>CircuitPython firmware in <code>pico_2w/</code> publishes the RCWL-9610A
-            distance to <code>vault/perimeter/distance</code>; the Pi subscribes on a local broker.</td></tr>
-          <tr><td>Voice recognition</td><td>Placeholder class; second factor is bypassed by default.</td></tr>
+          <tr><td>Pico perimeter node</td><td>CircuitPython firmware in <code>pico_2w/</code> publishes sonar distance to
+            <code>vault/perimeter/distance</code>; project docs and diagram disagree on the exact sensor model.</td></tr>
+          <tr><td>Voice recognition</td><td>Vosk module is present; the voice factor requires a configured model and microphone and has not been independently hardware-verified.</td></tr>
         </tbody>
       </table>
-    </div>    <h2>Where to start</h2>
+    </div>
+    <h2>Where to start</h2>
     <p>Review the <a href="hardware.html">code-derived pin map and connection diagram</a>,
       follow the <a href="setup.html">Raspberry Pi setup</a>, or read how to
       <a href="development.html">update and publish these pages</a>.</p>

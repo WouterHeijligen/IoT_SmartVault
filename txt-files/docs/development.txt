@@ -5,7 +5,7 @@ Source: docs\development.html
 
 ## Source layout
 
-main.py runs the vault state machine in five threads (button, sensors and OLED, actuators, cloud, voice). Supporting modules: vault_state.py (configuration and shared state), sensors.py (potentiometer, LM35, BH1750), display.py (OLED screens), zwaailicht.py (RGB LED and red/off warning blink), vault_lock.py (relay and stepper), mqtt_client.py (ThingSpeak telemetry and the local perimeter subscriber), notificaties.py (ntfy push and siren). voice.py runs Vosk speech recognition for the second factor (model-en/ by default; model-nl/ is available). See the Code page (code.html) for a full walkthrough.
+main.py runs the vault state machine in five threads (button, sensors and OLED, actuators, cloud, voice). Supporting modules: vault_state.py (configuration and shared state), sensors.py (potentiometer, LM35, BH1750), display.py (OLED screens), zwaailicht.py (RGB LED and red/off warning blink), vault_lock.py (relay and stepper), mqtt_client.py (ThingSpeak telemetry and the local perimeter subscriber), notificaties.py (ntfy push and siren). voice.py runs Vosk speech recognition for the second factor (model-en/ by default; model-nl/ is available). See the Code page for a full walkthrough.
 
 ## Edit and preview the site
 
@@ -13,18 +13,20 @@ The site is plain HTML and CSS in docs/: no theme, generator, or package install
 
 From the repository root:
 
+```
 python -m unittest discover -s tests -p "test_documentation.py"
 python -m http.server 8000 --bind 127.0.0.1 --directory docs
+```
 
-Open http://127.0.0.1:8000 to preview. Stop the server with Ctrl+C. The checks verify page metadata, local links, fragment targets, and image/style references without accessing GPIO or connecting to ThingSpeak.
+Open http://127.0.0.1:8000 (http://127.0.0.1:8000) to preview. Stop the server with Ctrl+C. The checks verify page metadata, local links, fragment targets, and image/style references without accessing GPIO or connecting to ThingSpeak.
 
 ## Publishing with GitHub Actions
 
-1. In the repository settings, open Pages and set Build and deployment / Source to GitHub Actions. A repository administrator must do this once.
+- In the repository settings, open Pages and set Build and deployment / Source to GitHub Actions. A repository administrator must do this once.
 
-2. Open a pull request targeting master. The Documentation workflow checks the site and packages a Pages artifact; it does not publish the PR or provide a hosted preview.
+- Open a pull request targeting master. The Documentation workflow checks the site and packages a Pages artifact; it does not publish the PR or provide a hosted preview.
 
-3. Merging into or pushing to master runs the same checks and deploys the artifact to the github-pages environment.
+- Merging into or pushing to master runs the same checks and deploys the artifact to the github-pages environment.
 
 Do not select Deploy from a branch: that also runs GitHub's generated pages build and deployment workflow, whose action versions are not controlled by this repository. Keep GitHub Actions selected so the maintained .github/workflows/pages.yml is the only publisher and its Node.js runtimes can be updated here.
 

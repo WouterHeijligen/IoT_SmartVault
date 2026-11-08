@@ -16,6 +16,10 @@
       <a href="code.html">Code</a>
       <a href="development.html">Development</a>
     </nav>
+    <p class="language-switch" aria-label="Language">
+      <span aria-current="page">English</span> |
+      <a href="nl/setup.html" lang="nl">Nederlands</a>
+    </p>
   </header>
   <main>
     <h1>Raspberry Pi setup</h1>
@@ -26,6 +30,16 @@
     <p>Use Raspberry Pi OS with Python 3, Git, and Python virtual environment
       support. Enable SPI and I2C using <code>sudo raspi-config</code>
       under Interface Options; follow any restart instructions it gives.</p>
+    <h2>Architecture and protocol overview</h2>
+    <p>The Pi 5 is the main controller. I2C reads the BH1750; SPI0 connects the
+      MCP3008 ADC; SPI1 drives the OLED. The Pico sends perimeter readings over
+      Wi-Fi and MQTT to Mosquitto on the Pi. The Pi separately publishes to the
+      ThingSpeak MQTT service and sends notifications to ntfy using HTTPS.
+      Local sensor buses and network messaging serve different purposes.</p>
+    <p>Read the <a href="code.html#protocols">protocol walkthrough</a> for how
+      each link moves data in the vault and for external references. The local
+      Mosquitto and current ThingSpeak MQTT connections use unencrypted port 1883.
+      Use them only on a trusted, closed project network; this is not a secure deployment.</p>
     <h3 id="spi1">OLED SPI1 configuration</h3>
     <p>The MCP3008 uses SPI0 and the OLED uses SPI1. On recent Raspberry Pi OS, the
       SPI1 overlay belongs in an applicable section (for example <code>[all]</code>)
@@ -94,7 +108,7 @@ python3 main.py</code></pre>
       set at the top of <code>vault_state.py</code>. Press <kbd>Ctrl+C</kbd> to stop;
       use <code>deactivate</code> to leave the environment.</p>
     <p>Voice verification uses the English model in <code>model-en/</code> by default
-      and the spoken passphrase <strong>open</strong>. If <code>VOSK_MODEL</code>
+      and the configured spoken passphrase. If <code>VOSK_MODEL</code>
       is configured in the environment or <code>.env</code>, it overrides that
       model path; remove the override or point it to your <code>model-en/</code> folder.</p>
     <p>The Pico 2 W perimeter node publishes its distance to an MQTT broker running on the Pi

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Vault | Ontwikkeling</title>
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="index.html">Smart Vault</a>
+    <nav aria-label="Hoofdnavigatie">
+      <a href="index.html">Overzicht</a>
+      <a href="hardware.html">Hardware</a>
+      <a href="setup.html">Installatie</a>
+      <a href="code.html">Code</a>
+      <a href="development.html" aria-current="page">Ontwikkeling</a>
+    </nav>
+    <p class="language-switch" aria-label="Taal">
+      <a href="../development.html" lang="en">English</a> |
+      <span aria-current="page">Nederlands</span>
+    </p>
+  </header>
+  <main>
+    <h1>Documentatie en ontwikkeling</h1>
+    <h2>Broncode-indeling</h2>
+    <p><code>main.py</code> voert de kluis-state-machine uit in vijf threads:
+      knop, sensoren en OLED, actuatoren, cloud en spraak. Ondersteunende modules:
+      <code>vault_state.py</code> (configuratie en gedeelde status),
+      <code>sensors.py</code> (potentiometer, LM35, BH1750),
+      <code>display.py</code> (OLED-schermen), <code>zwaailicht.py</code> (RGB-led
+      en rood/uit-waarschuwingsknipperlicht), <code>vault_lock.py</code> (relais
+      en stepper), <code>mqtt_client.py</code> (ThingSpeak-telemetrie en lokale
+      perimeter-subscriber) en <code>notificaties.py</code> (ntfy-push en sirene).
+      <code>voice.py</code> voert Vosk-spraakherkenning uit voor de tweede factor
+      (standaard <code>model-en/</code>; <code>model-nl/</code> is beschikbaar).
+      Bekijk de pagina <a href="code.html">Code</a> voor de volledige uitleg.</p>
+
+    <h2>De site aanpassen en lokaal bekijken</h2>
+    <p>De site bestaat uit gewone HTML- en CSS-bestanden in <code>docs/</code>;
+      er is geen thema, generator of package-installatie nodig. Gebruik relatieve
+      links zodat de site werkt op de GitHub Pages-URL van de repository.</p>
+    <p>Voer deze opdrachten uit vanuit de repositoryroot:</p>
+    <pre><code>python -m unittest discover -s tests -p "test_documentation.py"
+python -m http.server 8000 --bind 127.0.0.1 --directory docs</code></pre>
+    <p>Open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a> om de site
+      te bekijken. Stop de server met <kbd>Ctrl+C</kbd>. De controles testen
+      paginametadata, lokale links, fragmenten en verwijzingen naar afbeeldingen
+      en CSS zonder GPIO te gebruiken of met ThingSpeak te verbinden.</p>
+
+    <h2>Publiceren met GitHub Actions</h2>
+    <ol>
+      <li>Open in de repository-instellingen <strong>Pages</strong> en stel bij
+        <strong>Build and deployment / Source</strong> <strong>GitHub Actions</strong>
+        in. Een repositorybeheerder hoeft dit maar één keer te doen.</li>
+      <li>Open een pull request naar <code>master</code>. De workflow
+        <strong>Documentation</strong> controleert de site en maakt een Pages-artifact;
+        deze publiceert de pull request niet en maakt geen gehoste preview.</li>
+      <li>Een merge naar of push naar <code>master</code> voert dezelfde controles
+        uit en publiceert het artifact naar de omgeving <code>github-pages</code>.</li>
+    </ol>
+    <p>Kies niet voor <strong>Deploy from a branch</strong>: die optie start ook
+      GitHubs automatisch gegenereerde workflow voor Pages-build en deployment,
+      waarvan de actieversies niet door deze repository worden beheerd. Laat
+      <strong>GitHub Actions</strong> geselecteerd zodat
+      <code>.github/workflows/pages.yml</code> de enige publisher is en de
+      Node.js-runtimes hier bijgewerkt kunnen worden.</p>
+    <p>Na de eerste geslaagde deployment hoort de site beschikbaar te zijn op
+      <a href="https://wouterheijligen.github.io/IoT_SmartVault/">wouterheijligen.github.io/IoT_SmartVault/</a>.
+      De deploymentjob rapporteert de daadwerkelijke URL. Handmatig starten kan
+      ook via Actions; alleen een run op <code>master</code> kan publiceren.</p>
+    <p>Pull requests hebben alleen-lezen repositoryrechten. Alleen de
+      deploymentjob vraagt Pages-schrijfrechten en een identity token aan. Als
+      de omgeving <code>github-pages</code> branchbeperkingen heeft, moet
+      <code>master</code> worden toegestaan; ingestelde goedkeuringsregels blijven gelden.</p>
+
+    <h2>Bedradingsdocumentatie actueel houden</h2>
+    <p>Bewerk <code>docs/assets/connection-schema.drawio</code> met draw.io /
+      diagrams.net en exporteer de bijbehorende PNG naar
+      <code>docs/assets/connection-schema.png</code>. Werk de hardwaretabel bij
+      als GPIO-toewijzingen veranderen. Houd resterende verschillen beschreven
+      totdat diagram, code en fysieke bedrading met elkaar overeenkomen.</p>
+  </main>
+  <footer>Smart Vault &middot; <a href="https://github.com/WouterHeijligen/IoT_SmartVault">Broncode op GitHub</a></footer>
+</body>
+</html>

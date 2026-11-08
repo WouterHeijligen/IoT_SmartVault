@@ -3,7 +3,8 @@
 These are copy-ready prompts for the course presentations and the Smart Vault
 project sources. Open the matching prompt file, then paste either its video
 prompt or quiz prompt into NotebookLM/Gemini after adding the referenced
-sources to the notebook.
+sources to the notebook. Project prompts use the English documentation
+exports and explain the role of each protocol in the vault.
 
 ## Course chapters
 
@@ -32,9 +33,12 @@ network/cloud integration, and an oral-exam style review.
 2. Use that chapter's quiz prompt to generate and take a question bank.
 3. Ask the notebook to revisit missed questions, explain the underlying
    misconception, and create a few new transfer questions.
-4. For project questions, use the project files and diagram as sources. Ask
-   NotebookLM to distinguish what the current code does from planned design,
-   checklist claims, or anything that the sources do not establish.
+4. For project questions, add the latest code text files, the connection
+   diagram, and the English documentation exports in `txt-files\docs\`. Re-import
+   these exports when the documentation changes. The Dutch website pages are
+   translations; there is no need to upload duplicate text exports.
+   Ask NotebookLM to distinguish current code behavior from planned design,
+   checklist claims, or anything the sources do not establish.
 
 All prompts ask for evidence from the uploaded sources. Slide numbering may not
 be available in every NotebookLM answer; source titles or section headings are

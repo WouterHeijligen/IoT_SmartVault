@@ -7,44 +7,50 @@ IoT Essentials / Team project
 
 Smart Vault is a Raspberry Pi prototype exploring sensor monitoring, physical control, and cloud telemetry. The intended design combines a rotary code input, spoken verification, and tamper detection. It is an educational prototype, not a production security system.
 
-Work in progress. These pages distinguish the current source code from the planned design. The latest connection diagram is included; remaining code/wiring differences are listed on the hardware page.
-
 ## Application flow
 
-main.py starts four threads that share one state object (vault_state.py), plus a subscriber for the Pico perimeter distance.
+main.py starts button, sensor/display, actuator, and cloud workers that share one state object (vault_state.py), plus a subscriber for the Pico perimeter distance. With voice verification enabled, it also starts the voice worker.
 
-1. Code entry: turn the potentiometer to pick a digit (0-9) and press the button on GPIO 4 to confirm it. Three digits form the PIN.
+- Code entry: turn the potentiometer to pick a digit (0-9) and press the button on GPIO 4 to confirm it. Three digits form the PIN.
 
-2. Correct PIN: the relay powers the stepper, the lock opens, the LED turns green and the relay switches off again. Pressing the button closes the vault. With BYPASS_VOICE_2FA = False the vault first waits for a spoken passphrase (not implemented yet).
+- Correct PIN: the relay powers the stepper, the lock opens, the LED turns green and the relay switches off again. Pressing the button closes the vault. With BYPASS_VOICE_2FA = False the vault first waits for Vosk speech recognition; a configured model and microphone are required.
 
-3. Wrong PIN: the OLED shows how many attempts remain and the LED runs the zwaailicht for 3 seconds. After 3 wrong codes the vault is locked for 5 minutes, plays a short siren and sends one ntfy push notification.
+- Wrong PIN: the OLED shows how many attempts remain and the LED runs the warning blink for 3 seconds. After 3 wrong codes the vault is locked for 10 seconds, plays a short siren and sends one ntfy push notification.
 
-4. Alarm: a temperature above the fire threshold, or light inside a closed vault, starts the alarm: zwaailicht, a repeating siren and a push notification. The button resets it.
+- Alarm: a temperature above the fire threshold, or light inside a closed vault, starts the alarm: warning light, repeating siren and push notification. The button resets it.
 
-5. Telemetry: every 15 seconds light, temperature, perimeter distance and vault status are published to ThingSpeak.
+- Telemetry: every 15 seconds light, temperature, perimeter distance and vault status are published to ThingSpeak.
 
-The LED blinks red/off for both an incorrect PIN and an alarm. Thresholds are test values (light 5000 lux, temperature 25 °C) and are set in vault_state.py.
+The LED blinks red/off for both an incorrect PIN and an alarm. Current test thresholds are light 50 lux and temperature 30 °C, set in vault_state.py.
+
+## System architecture and protocols
+
+The Raspberry Pi 5 is the central controller: it reads local sensors, updates the shared VaultState, selects outputs, and publishes status. The Pico is a separate perimeter node that sends distance measurements to the Pi.
+
+| Link | Protocol / bus | Role in this project |
+| --- | --- | --- |
+| Pi 5 to BH1750 | I2C, GPIO 2/3 | Read digital light measurements. |
+| Pi 5 to MCP3008 | SPI0, GPIO 11/9/10; CS GPIO 25 | Convert potentiometer and LM35 analog voltages. |
+| Pi 5 to SSD1306 OLED | SPI1, GPIO 21/20 | Send display data; reset and data/command use GPIO 16/6. |
+| Pico to Pi | Wi-Fi and MQTT via local Mosquitto | Publish distance on vault/perimeter/distance. |
+| Pi to ThingSpeak | MQTT | Publish telemetry at the configured interval. |
+| Pi to ntfy | HTTPS request | Send alarm and lockout notifications. |
+
+I2C and SPI connect local components; MQTT carries messages between network clients. These are different layers and are not interchangeable. See the protocol walkthrough and part-by-part connections.
 
 ## Implementation status
 
-Component | Current source
-
-Sensors | LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C.
-
-Display and indicator | SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with zwaailicht effect. The ADC stays on SPI0.
-
-Code entry | 3-digit potentiometer PIN with retry counter and 5 minute lockout.
-
-Lock mechanism | Relay interlock and stepper driven by the vault state.
-
-Alarms | Fire and tamper (light) detection, siren and ntfy push notification.
-
-ThingSpeak | MQTT telemetry using credentials from .env.
-
-Pico perimeter node | CircuitPython firmware in pico_2w/ publishes the RCWL-9610A distance to vault/perimeter/distance; the Pi subscribes on a local broker.
-
-Voice recognition | Placeholder class; second factor is bypassed by default.
+| Component | Current source |
+| --- | --- |
+| Sensors | LM35 via MCP3008 CH1, potentiometer via CH0, BH1750 via I2C. |
+| Display and indicator | SSD1306 on separate SPI1 (SCLK GPIO21, MOSI GPIO20), plus a PWM RGB LED with warning-light effect. The ADC stays on SPI0. |
+| Code entry | 3-digit potentiometer PIN with retry counter and 10-second lockout. |
+| Lock mechanism | Relay interlock and stepper driven by the vault state. |
+| Alarms | Fire and tamper (light) detection, siren and ntfy push notification. |
+| ThingSpeak | MQTT telemetry using credentials from .env. |
+| Pico perimeter node | CircuitPython firmware in pico_2w/ publishes sonar distance to vault/perimeter/distance; project docs and diagram disagree on the exact sensor model. |
+| Voice recognition | Vosk module is present; the voice factor requires a configured model and microphone and has not been independently hardware-verified. |
 
 ## Where to start
 
-Review the code-derived pin map and connection diagram (hardware.html), follow the Raspberry Pi setup (setup.html), or read how to update and publish these pages (development.html).
+Review the code-derived pin map and connection diagram, follow the Raspberry Pi setup, or read how to update and publish these pages.

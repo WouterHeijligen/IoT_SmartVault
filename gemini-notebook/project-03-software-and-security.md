@@ -1,7 +1,8 @@
 # Smart Vault project — Software, state machine, and safeguards
 
-**Sources:** Uploaded code text files, `txt-files\docs\code.txt`, and
-`txt-files\docs\index.txt`.
+**Sources:** Uploaded code text files, the English code/overview exports under
+`txt-files\docs\`, and the repository documentation. Use the English exports
+only; the Dutch web pages are translations of the same evidence.
 
 ## Explanation video prompt
 
@@ -19,8 +20,11 @@ source code/documentation.
 
 Be precise about implementation status: use the code exports and current
 documentation as evidence; do not repeat unverified checklist claims as fact.
-Distinguish implemented behavior from placeholders or planned behavior,
-especially voice verification and physical security. Explain limitations:
+Distinguish implemented behavior from planned behavior and physical validation.
+The source contains a Vosk voice-recognition path and sets
+`BYPASS_VOICE_2FA = False`; explain that path without revealing its configured
+passphrase or claiming that microphone/model operation was independently
+verified on hardware. Explain limitations:
 this is an educational prototype, not a production security system. Do not
 recommend bypassing safeguards. End with a state-transition summary and a
 short explanation of what evidence would be needed to confirm behavior on
