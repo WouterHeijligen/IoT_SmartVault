@@ -15,7 +15,7 @@ The MCP3008 uses SPI0 and the OLED uses SPI1. On recent Raspberry Pi OS, the SPI
 
 dtoverlay=spi1-1cs
 
-After an operator-planned reboot, check that /dev/spidev1.0 exists and is accessible to the application user. This overlay enables SPI1 on GPIO21 (SCLK), GPIO20 (MOSI) and GPIO19 (MISO); the OLED only needs SCLK and MOSI. GPIO18 is the default controller CS0, but this OLED has no CS wire. Leave GPIO18/19 free of conflicting uses; the current RGB LED uses GPIO26 for blue, not the diagram's GPIO19.
+After an operator-planned reboot, check that /dev/spidev1.0 exists and is accessible to the application user. This overlay enables SPI1 on GPIO21 (SCLK), GPIO20 (MOSI) and GPIO19 (MISO); the OLED only needs SCLK and MOSI. GPIO18 is the default controller CS0, but this OLED has no CS wire. Leave GPIO18/19 free of conflicting uses. The current RGB LED uses GPIO26 for blue; GPIO19 is SPI1 MISO and is not connected to this OLED.
 
 Do not substitute the two- or three-CS SPI1 overlays without reviewing pin conflicts: their defaults also claim GPIO17 (stepper) and GPIO16 (OLED reset). See the official
 Raspberry Pi overlay reference (https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README).

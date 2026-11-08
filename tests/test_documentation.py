@@ -4,7 +4,26 @@ import unittest
 from urllib.parse import unquote, urlsplit
 
 
-DOCS = Path(__file__).resolve().parents[1] / "docs"
+ROOT = Path(__file__).resolve().parents[1]
+DOCS = ROOT / "docs"
+TEXT_DOCS = ROOT / "txt-files" / "docs"
+CODE_EXPORTS = {
+    "display.txt": "display.py",
+    "main.txt": "main.py",
+    "mqtt_client.txt": "mqtt_client.py",
+    "notificaties.txt": "notificaties.py",
+    "pico_2w_code.txt": "pico_2w/code.py",
+    "preflight_check.txt": "preflight_check.py",
+    "sensors.txt": "sensors.py",
+    "vault_lock.txt": "vault_lock.py",
+    "vault_state.txt": "vault_state.py",
+    "voice.txt": "voice.py",
+    "zwaailicht.txt": "zwaailicht.py",
+}
+
+
+def normalized_text(path):
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
 
 
 class Page(HTMLParser):
@@ -53,6 +72,37 @@ class DocumentationTests(unittest.TestCase):
                     self.assertTrue(target.is_file(), "Missing link target")
                     if url.fragment and target in pages:
                         self.assertIn(unquote(url.fragment), pages[target].ids)
+
+    def test_code_text_exports_match_current_sources(self):
+        for export_name, source_name in CODE_EXPORTS.items():
+            with self.subTest(export=export_name):
+                export = ROOT / "txt-files" / export_name
+                source = ROOT / source_name
+                self.assertTrue(export.is_file(), f"Missing export: {export_name}")
+                self.assertEqual(normalized_text(export), normalized_text(source))
+
+    def test_documentation_text_exports_exist_for_site_pages(self):
+        for page in DOCS.glob("*.html"):
+            with self.subTest(page=page.name):
+                export = TEXT_DOCS / f"{page.stem}.txt"
+                self.assertTrue(export.is_file(), f"Missing export: {export.name}")
+                self.assertIn(f"Source: docs\\{page.name}", export.read_text(encoding="utf-8"))
+
+    def test_hardware_guide_and_text_export_cover_current_connections(self):
+        expected = (
+            "GPIO 25",
+            "GPIO 3",
+            "GPIO 26",
+            "MOSI1",
+            "GP27 / GP28",
+            "8 November 2026",
+            "3.3 V supply for the selected LM35 has been verified",
+        )
+        for path in (DOCS / "hardware.html", TEXT_DOCS / "hardware.txt"):
+            with self.subTest(document=path.name):
+                text = path.read_text(encoding="utf-8")
+                for marker in expected:
+                    self.assertIn(marker, text)
 
 
 if __name__ == "__main__":

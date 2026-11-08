@@ -3,7 +3,7 @@ Source: docs\hardware.html
 
 # Hardware and connections
 
-Latest diagram, with differences still to reconcile. The diagram below is the 6 November 2026 update from the team project folder. The table records the current Python configuration, not a physical inspection. Verify component datasheets, voltage levels, and wiring before powering the circuit.
+Latest diagram, with a few labels still to reconcile. The diagram below is the 8 November 2026 update from the team project folder. The table records the current Python configuration, not a physical inspection. Verify component datasheets, voltage levels, and wiring before powering the circuit.
 
 ## Pin map from the current code
 
@@ -32,6 +32,8 @@ RGB LED red / green / blue | 12 / 13 / 26, PWM | zwaailicht.py
 Relay control, active-low | 24 | vault_lock.py
 
 Stepper driver IN1 / IN2 / IN3 / IN4 | 17 / 27 / 22 / 23 | vault_lock.py
+
+The MCP3008 chip-select is manually controlled on GPIO 25 (physical pin 22). GPIO 8 / CE0 is not used by the current code.
 
 ## OLED connections (SPI1)
 
@@ -73,23 +75,19 @@ On 3.3 V the echo signal is 3.3 V, so no level shifting is needed. If the sensor
 
 ## Known diagram differences
 
-- The updated MCP3008 chip-select connection uses GPIO 25, matching the code. The central SPI bus list still mentions GPIO 8 / CE0.
+- The GPIO assignments for the Raspberry Pi 5 now match the code, including BH1750 SCL on GPIO 3, MCP3008 CS on GPIO 25, and RGB blue on GPIO 26. The Pi block has a typo: MOSO1 should be MOSI1.
 
-- The OLED edges show GPIO 20 and 21, matching the current connections. However, GPIO 21 is SCLK1, not MISO. The OLED module's text incorrectly mentions MOSI and MISO; it uses MOSI and SCLK, without a MISO wire. Its 0x3C label is an I2C address, not an SPI address.
+- The Pico callout now maps physical pins 32 / 34 to GP27 / GP28, matching pico_2w/code.py. However, the diagram labels the board Pico W and the sensor HC-SR04, while the repository documentation identifies a Pico 2 W and an RCWL-9610A. Confirm the actual board and sensor, then make the diagram and project documentation consistent.
 
-- The BH1750 SCL edge says GPIO 11 but also physical pin 5. Physical pin 5 is GPIO 3 / SCL1, matching sensors.py; GPIO 11 is the ADC's SPI0 clock. Do not wire BH1750 SCL to GPIO 11.
-
-- The diagram uses GPIO 19 for the blue LED; the code uses GPIO 26.
-
-- The Pico section of the diagram shows an HC-SR04 and may use other pins; the Pico firmware in pico_2w/ uses an RCWL-9610A on GP27 / GP28 as listed above.
+- The diagram labels the sonar VCC and ECHO as 3.3 V, but its color legend still calls ECHO 5 V. Correct the legend to match the selected sensor and its verified signal levels. Do not connect a 5 V ECHO output directly to a Pico GPIO.
 
 ## Latest connection diagram
 
 Open the full-size diagram (assets/connection-schema.png) or download its editable draw.io source (assets/connection-schema.drawio). Both files were copied from the latest team project schema; update them together after reviewing the wiring.
 
 [Image: Latest Smart Vault connection diagram showing the Pico perimeter node, Pi sensors, display, relay, stepper, and RGB LED. See the differences above before using it as a wiring reference.]  (assets/connection-schema.png)
-Updated 6 November 2026. XML labels and the PNG were reviewed; physical wiring has not been independently verified. See the remaining differences above.
+Updated 8 November 2026. XML labels and the PNG were reviewed; physical wiring has not been independently verified. See the remaining differences above.
 
 ## Electrical checks still required
 
-Use 3.3 V-compatible GPIO signals and verify the MCP3008 supply/reference, sensor supply requirements, common ground, and LED resistors against the actual components. In particular, verify the diagram's 3.3 V LM35 supply label against the exact sensor's rated supply range. Motors must use a suitable driver, not GPIO power. The Pico sonar is powered from 3.3 V; at 5 V its echo signal needs a voltage divider.
+Use 3.3 V-compatible GPIO signals and verify the MCP3008 supply/reference, sensor supply requirements, common ground, and LED resistors against the actual components. The 3.3 V supply for the selected LM35 has been verified. Motors must use a suitable driver, not GPIO power. Verify the selected Pico sonar's supply and echo levels; any 5 V echo signal needs level shifting before it reaches a Pico GPIO.
