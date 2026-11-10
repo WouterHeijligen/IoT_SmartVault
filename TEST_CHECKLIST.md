@@ -96,7 +96,7 @@ python3 main.py
   - [x] **Smartphone Push:** ntfy melding binnen 1 seconde:  
     *`SMART VAULT ALARM: BRAAK! (.. lx) (Lux=.., Temp=..C)`*
   - [ ] **Resetblokkering:** Druk terwijl er nog licht binnenvalt; alarm en sirene blijven actief, OLED toont `Reset geblokkeerd`.
-  - [ ] **Veilige reset:** Houd licht maximaal 40 lux en temperatuur maximaal 28 C gedurende 3 seconden met geldige recente metingen. Druk pas bij `Veilig -> Druk=Reset`; de sirene stopt en de kluis keert terug naar `PIN_INPUT`.
+  - [ ] **Veilige reset:** Zorg voor licht maximaal 40 lux en temperatuur maximaal 28 C met geldige recente metingen. Zonder extra wachttijd verschijnt `Veilig -> Druk=Reset`; druk op de knop om de sirene te stoppen en terug te keren naar `PIN_INPUT`.
 
 ---
 
@@ -107,8 +107,8 @@ python3 main.py
   - [x] **OLED:** Toont **`ALARM!`** met reden **`BRAND! T=30.x C`**.
   - [x] **Actuatoren:** Rood knipperend zwaailicht + pulserende Bluetooth sirene.
   - [x] **Smartphone Push:** ntfy melding met actuele temperatuur.
-  - [ ] **Reset:** Bij meer dan 28 C blijft reset geblokkeerd. Laat afkoelen tot maximaal 28 C en houd licht maximaal 40 lux gedurende 3 seconden; druk daarna om terug te keren naar `PIN_INPUT` (niet ontgrendelen).
-  - [ ] **Meetonderbreking:** Onderbreek de sensormetingen; reset blijft geblokkeerd en vereist na herstel opnieuw 3 seconden veilige metingen.
+  - [ ] **Reset:** Bij meer dan 28 C blijft reset geblokkeerd. Laat afkoelen tot maximaal 28 C en zorg voor licht maximaal 40 lux; druk zonder extra wachttijd om terug te keren naar `PIN_INPUT` (niet ontgrendelen).
+  - [ ] **Meetonderbreking:** Onderbreek de sensormetingen; reset blijft geblokkeerd totdat weer geldige recente veilige metingen beschikbaar zijn.
 
 ---
 
@@ -119,7 +119,7 @@ python3 main.py
   - [x] **Loitering Trigger:** Na 15 seconden aaneengesloten aanwezigheid slaat het systeem in alarm.
   - [x] **OLED:** Toont **`LOITER > 15s`**.
   - [x] **Actuatoren & Push:** Zwaailicht, sirene en ntfy smartphone alert.
-  - [ ] **Reset:** Binnen 40 cm of bij een afstandsmeting van minstens 10 seconden oud blijft reset geblokkeerd. Zorg voor een recente afstand van minstens 40 cm, temperatuur maximaal 28 C en licht maximaal 40 lux gedurende 3 seconden; druk daarna om het alarm te wissen.
+  - [ ] **Reset:** Binnen 40 cm of bij een afstandsmeting van minstens 10 seconden oud blijft reset geblokkeerd. Zorg voor een recente afstand van minstens 40 cm, temperatuur maximaal 28 C en licht maximaal 40 lux; druk zonder extra wachttijd om het alarm te wissen.
 
 ---
 

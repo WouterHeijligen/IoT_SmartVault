@@ -23,7 +23,6 @@ class AlarmResetTests(unittest.TestCase):
         self.state.temp_c = 25.0
         self.state.lux = 10.0
         self.state.sensor_ts = 10.0
-        self.state.alarm_safe_since = 7.0
         self.clock = types.SimpleNamespace(now=10.0)
         self.output = Mock()
 
@@ -100,12 +99,11 @@ class AlarmResetTests(unittest.TestCase):
                 self.assertEqual(self.state.mode, "ALARM")
                 self.assertEqual(self.state.alarm_reason, "BRAND")
 
-    def test_button_cannot_reset_without_stable_recovery(self):
-        for safe_since in (None, 7.01):
-            with self.subTest(safe_since=safe_since):
-                self.state.alarm_safe_since = safe_since
-                self.press_button()
-                self.assertEqual(self.state.mode, "ALARM")
+    def test_first_safe_sensor_reading_allows_immediate_reset(self):
+        self.state.sensor_ts = None
+        self.sensor_cycle()
+        self.press_button()
+        self.assertEqual(self.state.mode, "PIN_INPUT")
 
     def test_button_cannot_reset_on_missing_or_stale_sensor_readings(self):
         for sensor_ts in (None, 9.0, 11.0):
@@ -132,12 +130,15 @@ class AlarmResetTests(unittest.TestCase):
         self.assertEqual(self.state.mode, "PIN_INPUT")
         self.assertFalse(self.state.alarm_requires_perimeter)
 
-    def test_motor_must_stop_before_recovery(self):
+    def test_motor_must_stop_before_reset(self):
         self.state.motor_busy = True
         self.sensor_cycle()
-        self.assertIsNone(self.state.alarm_safe_since)
         self.press_button()
         self.assertEqual(self.state.mode, "ALARM")
+        self.state.motor_busy = False
+        self.sensor_cycle()
+        self.press_button()
+        self.assertEqual(self.state.mode, "PIN_INPUT")
 
     def test_denied_reset_keeps_siren_active(self):
         self.state.temp_c = 35.0
@@ -158,38 +159,24 @@ class AlarmResetTests(unittest.TestCase):
         notifications.sirene.assert_called_once_with()
         notifications.stop_sirene.assert_not_called()
 
-    def test_button_resets_after_stable_safe_readings(self):
+    def test_button_resets_immediately_with_current_safe_readings(self):
         self.state.temp_c = 28.0
         self.state.lux = 40.0
         self.press_button()
         self.assertEqual(self.state.mode, "PIN_INPUT")
         self.assertEqual(self.state.alarm_reason, "")
-        self.assertIsNone(self.state.alarm_safe_since)
 
-    def test_sensor_worker_requires_three_seconds_and_restarts_after_unsafe_sample(self):
-        self.state.alarm_safe_since = None
-        for step in range(7):
-            self.clock.now = 10.0 + step * 0.5
-            self.sensor_cycle()
-            self.assertEqual(
-                self.state.alarm_reset_allowed(self.clock.now), step == 6
-            )
-
-        self.clock.now = 13.1
+    def test_sensor_worker_updates_safety_without_waiting_after_unsafe_sample(self):
         self.sensor_cycle(temp_c=29.0)
-        self.assertIsNone(self.state.alarm_safe_since)
-        for step in range(7):
-            self.clock.now = 13.5 + step * 0.5
-            self.sensor_cycle()
-            self.assertEqual(
-                self.state.alarm_reset_allowed(self.clock.now), step == 6
-            )
+        self.assertFalse(self.state.alarm_reset_allowed(self.clock.now))
+        self.clock.now += 0.1
+        self.sensor_cycle()
+        self.assertTrue(self.state.alarm_reset_allowed(self.clock.now))
 
-    def test_sensor_failure_or_reading_gap_restarts_recovery(self):
-        for failure in ("exception", "gap", "cached"):
+    def test_sensor_failure_or_stale_light_blocks_until_fresh_reading(self):
+        for failure in ("exception", "cached"):
             with self.subTest(failure=failure):
                 self.state.sensor_ts = 10.0
-                self.state.alarm_safe_since = 7.0
                 self.clock.now = 12.0
                 self.output.reset_mock()
                 self.sensor_cycle(
@@ -201,6 +188,9 @@ class AlarmResetTests(unittest.TestCase):
                         "Sensor disconnected" in str(call)
                         for call in self.output.call_args_list
                     ))
+                self.output.reset_mock()
+                self.sensor_cycle()
+                self.assertTrue(self.state.alarm_reset_allowed(self.clock.now))
 
     def test_loiter_alarm_records_distance_requirement(self):
         self.state.mode = "PIN_INPUT"
@@ -213,9 +203,9 @@ class AlarmResetTests(unittest.TestCase):
         self.sensor_cycle()
         self.assertEqual(self.state.mode, "ALARM")
         self.assertTrue(self.state.alarm_requires_perimeter)
-        self.assertIsNone(self.state.alarm_safe_since)
+        self.assertFalse(self.state.alarm_reset_allowed(self.clock.now))
 
-    def test_incoming_unsafe_distance_immediately_restarts_loiter_recovery(self):
+    def test_incoming_distance_immediately_updates_loiter_reset_safety(self):
         self.state.alarm_requires_perimeter = True
         namespace = dict(
             state=self.state, LOITER_DISTANCE_CM=vault_state.LOITER_DISTANCE_CM,
@@ -225,9 +215,9 @@ class AlarmResetTests(unittest.TestCase):
             body=[self.functions["on_perimeter_afstand"]], type_ignores=[]
         ), "main.py", "exec"), namespace)
         namespace["on_perimeter_afstand"](25.0)
-        namespace["on_perimeter_afstand"](100.0)
-        self.assertIsNone(self.state.alarm_safe_since)
         self.assertFalse(self.state.alarm_reset_allowed(self.clock.now))
+        namespace["on_perimeter_afstand"](100.0)
+        self.assertTrue(self.state.alarm_reset_allowed(self.clock.now))
 
     def test_closing_unlocked_vault_is_unchanged(self):
         self.state.mode = "UNLOCKED"

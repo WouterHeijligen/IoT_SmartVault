@@ -124,7 +124,7 @@ def thread_button():
     - In modus `UNLOCKED`:
       Een druk op de knop sluit de kluis weer terug naar `PIN_INPUT`.
     - In modus `ALARM`:
-      Resetten naar `PIN_INPUT` kan alleen na een stabiele, veilige herstelperiode.
+      Resetten naar `PIN_INPUT` kan zodra de actuele metingen veilig zijn.
     """
     last_pressed = False
 
@@ -180,7 +180,7 @@ def thread_button():
                         print("[AUTH] Wachtperiode actief, invoer geblokkeerd.")
 
                     elif state.mode == "ALARM" and not state.alarm_reset_allowed(time.monotonic()):
-                        print("[ALARM] Reset geblokkeerd: wacht op stabiele, veilige metingen.")
+                        print("[ALARM] Reset geblokkeerd: wacht op veilige, recente metingen.")
 
                     elif state.mode in ("UNLOCKED", "ALARM"):
                         if state.mode == "UNLOCKED":
@@ -192,7 +192,6 @@ def thread_button():
                         state.failed_attempts = 0
                         state.alarm_reason = ""
                         state.alarm_requires_perimeter = False
-                        state.alarm_safe_since = None
                         state.alarm_notified = False
                         state.unlock_executed = False
 
@@ -294,7 +293,7 @@ def thread_sensors_and_display():
                         state.alarm_requires_perimeter = True
                         state.loiter_since = None
 
-                state.update_alarm_recovery(nu, sensors.laatste_lux_ts)
+                state.sensor_ts = sensors.laatste_lux_ts
                 alarm_veilig = state.alarm_reset_allowed(nu)
 
                 # Maak een kopietje (snapshot) van alle waarden voor het OLED-scherm,
@@ -338,7 +337,6 @@ def thread_sensors_and_display():
         except Exception as e:
             with state.lock:
                 state.sensor_ts = None
-                state.alarm_safe_since = None
             print(f"[FOUT in Sensor/OLED Thread]: {e}")
 
         # Wacht 0,10 seconde (10 keer per seconde verversen)
@@ -591,8 +589,6 @@ def on_perimeter_afstand(dist_cm):
         state.perimeter_cm = dist_cm
         state.perimeter_ts = time.monotonic()
         state.loitering_alert = (dist_cm < LOITER_DISTANCE_CM)
-        if state.alarm_requires_perimeter and not state.alarm_conditions_safe(state.perimeter_ts):
-            state.alarm_safe_since = None
 
 
 # ==============================================================================

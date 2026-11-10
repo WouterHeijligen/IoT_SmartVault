@@ -56,7 +56,6 @@ FIRE_CONFIRM_READINGS = 10       # Opeenvolgende metingen (10 Hz) boven de dremp
 
 TEMP_ALARM_RESET_C = 28.0
 LUX_ALARM_RESET = 40.0
-ALARM_RECOVERY_S = 3.0
 ALARM_SENSOR_STALE_S = 1.0
 
 # De draaiknop (potmeter) geeft een getal van 0 tot 1023. Als de knop precies op de grens
@@ -125,7 +124,6 @@ class VaultState:
         self.last_activity = 0.0        # laatste draai of knopdruk (monotonic)
         self.alarm_reason = ""
         self.alarm_requires_perimeter = False
-        self.alarm_safe_since = None
         self.sensor_ts = None
         self.unlock_executed = False    # Stappenmotor 1x draaien per ontgrendeling
         self.lock_executed = True       # Stappenmotor 1x terugdraaien per vergrendeling
@@ -136,9 +134,10 @@ class VaultState:
         self.lockout_push_pending = False   # ntfy push 1x versturen bij start wachtperiode
         self.lockout_siren_pending = False  # korte sirene 1x afspelen bij start wachtperiode
 
-    def alarm_conditions_safe(self, now):
+    def alarm_reset_allowed(self, now):
         if (
-            self.motor_busy
+            self.mode != "ALARM"
+            or self.motor_busy
             or self.sensor_ts is None
             or not 0 <= now - self.sensor_ts < ALARM_SENSOR_STALE_S
             or not math.isfinite(self.temp_c)
@@ -154,25 +153,3 @@ class VaultState:
                 and self.perimeter_cm >= LOITER_DISTANCE_CM
             )
         return True
-
-    def update_alarm_recovery(self, now, sensor_ts):
-        # Aanroepen onder state.lock; een meetonderbreking wist de herstelperiode.
-        if (
-            self.sensor_ts is None
-            or sensor_ts is None
-            or sensor_ts - self.sensor_ts >= ALARM_SENSOR_STALE_S
-        ):
-            self.alarm_safe_since = None
-        self.sensor_ts = sensor_ts
-        if self.mode != "ALARM" or not self.alarm_conditions_safe(now):
-            self.alarm_safe_since = None
-        elif self.alarm_safe_since is None:
-            self.alarm_safe_since = now
-
-    def alarm_reset_allowed(self, now):
-        return (
-            self.mode == "ALARM"
-            and self.alarm_conditions_safe(now)
-            and self.alarm_safe_since is not None
-            and now - self.alarm_safe_since >= ALARM_RECOVERY_S
-        )
