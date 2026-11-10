@@ -53,6 +53,7 @@ class Sensors:
         self.i2c = busio.I2C(board.D3, board.D2)
         # Bewaart de laatst gemeten lichtwaarde
         self.laatste_lux = 0.0
+        self.laatste_lux_ts = None
 
         # We reserveren heel even de I2C-lijn (`try_lock`), sturen het startcommando
         # naar de BH1750, en geven de lijn in `finally` altijd weer netjes vrij (`unlock`).
@@ -127,6 +128,7 @@ class Sensors:
 
         # Plak de twee bytes aan elkaar en deel door 1.2 (formule uit de datasheet)
         self.laatste_lux = ((result[0] << 8) | result[1]) / 1.2
+        self.laatste_lux_ts = time.monotonic()
         return self.laatste_lux
 
     def lees_potmeter_raw(self):

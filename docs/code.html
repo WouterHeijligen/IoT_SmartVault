@@ -166,7 +166,7 @@ button / potentiometer / LM35 / BH1750 / microphone --&gt; VaultState &lt;--+--&
     <table>
       <thead><tr><th>Thread</th><th>Frequency</th><th>Task</th></tr></thead>
       <tbody>
-        <tr><td>Button</td><td>50 Hz</td><td>Debounced edge detection. In PIN_INPUT, adds the selected digit and checks the code after three digits. In ALARM or UNLOCKED, the button resets to PIN_INPUT; it has no effect in LOCKOUT.</td></tr>
+        <tr><td>Button</td><td>50 Hz</td><td>Debounced edge detection. In PIN_INPUT, adds the selected digit and checks the code after three digits. In UNLOCKED, closes the vault. In ALARM, resets only after stable safe readings; it has no effect in LOCKOUT.</td></tr>
         <tr><td>Sensors-OLED</td><td>10 Hz</td><td>Reads the potentiometer (with hysteresis), LM35 (median of 5), and BH1750; evaluates fire, tampering, and loitering; refreshes the OLED.</td></tr>
         <tr><td>Actuators</td><td>~30 Hz</td><td>Runs motor movements, updates the RGB LED, and plays the siren according to the current mode.</td></tr>
         <tr><td>Cloud</td><td>2 Hz, telemetry every 15 s</td><td>Sends ntfy pushes (alarm, lockout) and ThingSpeak telemetry.</td></tr>
@@ -185,7 +185,7 @@ button / potentiometer / LM35 / BH1750 / microphone --&gt; VaultState &lt;--+--&
         <tr><td>PIN_INPUT</td><td>Startup, reset, or after lockout</td><td>Blue light, motor unpowered; potentiometer selects 0-9 and button confirms</td></tr>
         <tr><td>VOICE_2FA</td><td>Correct PIN (voice bypass disabled)</td><td>Orange light; Vosk listens for the passphrase for 20 s, then returns to PIN_INPUT</td></tr>
         <tr><td>UNLOCKED</td><td>Both factors accepted</td><td>Green light; relay on, stepper opens</td></tr>
-        <tr><td>ALARM</td><td>Fire, tampering, or loitering</td><td>Red/off blink, siren, ntfy push; button resets</td></tr>
+        <tr><td>ALARM</td><td>Fire, tampering, or loitering</td><td>Red/off blink, siren, ntfy push; button resets only after safe recovery</td></tr>
         <tr><td>LOCKOUT</td><td>Three incorrect PINs</td><td>Dim red, 10-second wait, push notification, and siren</td></tr>
       </tbody>
     </table>
@@ -205,6 +205,7 @@ button / potentiometer / LM35 / BH1750 / microphone --&gt; VaultState &lt;--+--&
     <ul>
       <li><strong>MCP3008:</strong> SPI0, CS GPIO 25; channel 0 = potentiometer, channel 1 = LM35 (10 mV per degree Celsius).</li>
       <li><strong>Alarm push:</strong> immediately on the first alarm, then no more than once every 2 minutes while ALARM remains active. Reset does not clear the cooldown. Configured by <code>ALARM_PUSH_INTERVAL_S</code>; siren and lockout notifications are unchanged.</li>
+      <li><strong>Alarm reset:</strong> requires 3 seconds of valid readings at or below 28 C and 40 lux, with no motor movement. Local readings must be less than 1 second old. Loitering alarms also require a finite distance of at least 40 cm, less than 10 seconds old. Unsafe readings or sensor interruptions restart recovery. Until reset is allowed, the OLED shows a blocked reset and the siren stays active.</li>
       <li><strong>BH1750:</strong> I2C address <code>0x23</code>; set once to continuous high-resolution mode (command <code>0x10</code>), then read. Lux = raw value / 1.2.</li>
       <li><strong>OLED:</strong> SSD1306 128x64 on SPI1: SCLK GPIO 21 (physical pin 40), MOSI GPIO 20 (pin 38), RST GPIO 16, and DC GPIO 6. No CS or MISO is connected. The top row shows <code>L:</code> lux, <code>T:</code> temperature, and <code>A:</code> distance. See <a href="hardware.html">connections</a> and <a href="setup.html#spi1">SPI1 setup</a>.</li>
       <li><strong>Stepper:</strong> 28BYJ-48 via ULN2003 on GPIO 17/27/22/23, full-step with two coils energized, 3072 steps, 10 ms per step (about 31 s). Opening uses the reverse sequence (<code>vooruit=False</code>); closing uses the normal sequence (<code>vooruit=True</code>).</li>

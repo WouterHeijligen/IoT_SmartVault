@@ -95,7 +95,8 @@ python3 main.py
   - [x] **Akoestisch alarm:** De sirene (`sirene.wav`) loeit elke 4 seconden over de Bluetooth speaker.
   - [x] **Smartphone Push:** ntfy melding binnen 1 seconde:  
     *`SMART VAULT ALARM: BRAAK! (.. lx) (Lux=.., Temp=..C)`*
-  - [x] **Reset:** Druk 1x op de fysieke drukknop $\rightarrow$ Sirene stopt direct, display en LED keren terug naar blauw.
+  - [ ] **Resetblokkering:** Druk terwijl er nog licht binnenvalt; alarm en sirene blijven actief, OLED toont `Reset geblokkeerd`.
+  - [ ] **Veilige reset:** Houd licht maximaal 40 lux en temperatuur maximaal 28 C gedurende 3 seconden met geldige recente metingen. Druk pas bij `Veilig -> Druk=Reset`; de sirene stopt en de kluis keert terug naar `PIN_INPUT`.
 
 ---
 
@@ -106,7 +107,8 @@ python3 main.py
   - [x] **OLED:** Toont **`ALARM!`** met reden **`BRAND! T=30.x C`**.
   - [x] **Actuatoren:** Rood knipperend zwaailicht + pulserende Bluetooth sirene.
   - [x] **Smartphone Push:** ntfy melding met actuele temperatuur.
-  - [x] **Reset:** Laat sensor afkoelen (< 30 °C) en druk op de fysieke knop om te ontgrendelen.
+  - [ ] **Reset:** Bij meer dan 28 C blijft reset geblokkeerd. Laat afkoelen tot maximaal 28 C en houd licht maximaal 40 lux gedurende 3 seconden; druk daarna om terug te keren naar `PIN_INPUT` (niet ontgrendelen).
+  - [ ] **Meetonderbreking:** Onderbreek de sensormetingen; reset blijft geblokkeerd en vereist na herstel opnieuw 3 seconden veilige metingen.
 
 ---
 
@@ -117,7 +119,7 @@ python3 main.py
   - [x] **Loitering Trigger:** Na 15 seconden aaneengesloten aanwezigheid slaat het systeem in alarm.
   - [x] **OLED:** Toont **`LOITER > 15s`**.
   - [x] **Actuatoren & Push:** Zwaailicht, sirene en ntfy smartphone alert.
-  - [x] **Reset:** Druk 1x op de fysieke knop om het alarm te wissen.
+  - [ ] **Reset:** Binnen 40 cm of bij een afstandsmeting van minstens 10 seconden oud blijft reset geblokkeerd. Zorg voor een recente afstand van minstens 40 cm, temperatuur maximaal 28 C en licht maximaal 40 lux gedurende 3 seconden; druk daarna om het alarm te wissen.
 
 ---
 

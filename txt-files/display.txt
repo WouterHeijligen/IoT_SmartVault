@@ -296,11 +296,11 @@ class Display:
             draw.rectangle((0, 14, 127, 63), outline=255, fill=0)
             draw.text((14, 16), "!!! ALARM ACTIEF !!!", font=font, fill=255)
             draw.text((6, 30), reason[:20], font=font, fill=255)
-            # Geef aan of de temperatuur en het licht weer veilig zijn om te resetten
+            # De knop en het scherm gebruiken dezelfde herstelcontrole.
             if alarm_veilig:
                 draw.text((6, 46), "Veilig -> Druk=Reset", font=font, fill=255)
             else:
-                draw.text((6, 46), "Druk knop voor Reset", font=font, fill=255)
+                draw.text((6, 46), "Reset geblokkeerd", font=font, fill=255)
 
         # --- STAP 3: Stuur het getekende plaatje naar het OLED-scherm ---
         self.oled.image(image)

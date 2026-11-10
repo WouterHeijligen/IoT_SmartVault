@@ -177,7 +177,7 @@ knop / potentiometer / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt;
       <table>
         <thead><tr><th>Thread</th><th>Frequentie</th><th>Taak</th></tr></thead>
         <tbody>
-          <tr><td>Button</td><td>50 Hz</td><td>Debounced flankdetectie; voegt in PIN_INPUT een cijfer toe en controleert na drie cijfers de code. In ALARM of UNLOCKED reset de knop naar PIN_INPUT; in LOCKOUT doet de knop niets.</td></tr>
+          <tr><td>Button</td><td>50 Hz</td><td>Debounced flankdetectie; voegt in PIN_INPUT een cijfer toe en controleert na drie cijfers de code. In UNLOCKED sluit de knop de kluis. In ALARM kan reset alleen na stabiele veilige metingen; in LOCKOUT doet de knop niets.</td></tr>
           <tr><td>Sensors-OLED</td><td>10 Hz</td><td>Leest potentiometer (met hysterese), LM35 (mediaan van 5) en BH1750; beoordeelt brand, sabotage en loitering; ververst het OLED.</td></tr>
           <tr><td>Actuators</td><td>Ongeveer 30 Hz</td><td>Voert motorbewegingen uit, werkt de RGB-led bij en speelt de sirene af volgens de modus.</td></tr>
           <tr><td>Cloud</td><td>2 Hz; telemetrie elke 15 s</td><td>Verstuurt ntfy-pushmeldingen en ThingSpeak-telemetrie.</td></tr>
@@ -198,7 +198,7 @@ knop / potentiometer / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt;
           <tr><td>PIN_INPUT</td><td>Start, reset of na blokkering</td><td>Blauw licht, motor spanningsloos; potentiometer kiest 0-9 en de knop bevestigt</td></tr>
           <tr><td>VOICE_2FA</td><td>Juiste pincode (voice-bypass uit)</td><td>Oranje licht; Vosk luistert 20 s naar het wachtwoord en keert daarna terug naar PIN_INPUT</td></tr>
           <tr><td>UNLOCKED</td><td>Beide factoren geaccepteerd</td><td>Groen licht; relais aan, stepper opent</td></tr>
-          <tr><td>ALARM</td><td>Brand, sabotage of loitering</td><td>Rood/uit-knipperlicht, sirene, ntfy-push; knop reset</td></tr>
+          <tr><td>ALARM</td><td>Brand, sabotage of loitering</td><td>Rood/uit-knipperlicht, sirene, ntfy-push; knop reset alleen na veilig herstel</td></tr>
           <tr><td>LOCKOUT</td><td>Drie foute pincodes</td><td>Gedimd rood, 10 seconden wachten, pushmelding en sirene</td></tr>
         </tbody>
       </table>
@@ -222,6 +222,7 @@ knop / potentiometer / LM35 / BH1750 / microfoon --&gt; VaultState &lt;--+--&gt;
     <ul>
       <li><strong>MCP3008:</strong> SPI0, CS GPIO 25; kanaal 0 = potentiometer, kanaal 1 = LM35.</li>
       <li><strong>Alarmpush:</strong> direct bij het eerste alarm, daarna maximaal elke 2 minuten zolang ALARM actief blijft. Reset wist de wachttijd niet; ingesteld via <code>ALARM_PUSH_INTERVAL_S</code>.</li>
+      <li><strong>Alarmreset:</strong> vereist 3 seconden geldige metingen van maximaal 28 C en 40 lux, zonder motorbeweging. Lokale metingen moeten minder dan 1 seconde oud zijn. Bij loitering is ook een eindige afstand van minstens 40 cm vereist, minder dan 10 seconden oud. Onveilige metingen of sensoronderbrekingen starten de herstelperiode opnieuw. Tot reset is toegestaan toont het OLED een geblokkeerde reset en blijft de sirene actief.</li>
       <li><strong>BH1750:</strong> I2C-adres <code>0x23</code>; eenmaal ingesteld op continue hoge resolutie (commando <code>0x10</code>), daarna uitlezen. Lux = ruwe waarde / 1,2.</li>
       <li><strong>OLED:</strong> SSD1306 128x64 op SPI1: SCLK GPIO 21 (fysieke pin 40), MOSI GPIO 20 (pin 38), RST GPIO 16 en DC GPIO 6. Geen CS of MISO. Zie <a href="hardware.html">de aansluitingen</a> en <a href="setup.html#spi1">SPI1-configuratie</a>.</li>
       <li><strong>Stepper:</strong> 28BYJ-48 via ULN2003 op GPIO 17/27/22/23, full-step met twee spoelen tegelijk, 3072 stappen en 10 ms per stap (ongeveer 31 s). Openen gebruikt de omgekeerde sequentie; sluiten de normale.</li>

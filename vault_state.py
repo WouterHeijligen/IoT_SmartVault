@@ -21,6 +21,7 @@ slotje (`state.lock`). Met `with state.lock:` zegt een taak eigenlijk:
 of schrijven."
 """
 
+import math
 import threading
 
 # ==============================================================================
@@ -52,6 +53,11 @@ TEMP_FIRE_THRESHOLD_C = 30.0     # Voorlopig laag gezet voor testen in kamerwarm
 # Om te voorkomen dat één toevallige meetfout meteen het brandalarm laat afgaan,
 # moet de temperatuur 10 metingen achter elkaar (10x per seconde = 1 seconde lang) te hoog zijn.
 FIRE_CONFIRM_READINGS = 10       # Opeenvolgende metingen (10 Hz) boven de drempel voor brandalarm
+
+TEMP_ALARM_RESET_C = 28.0
+LUX_ALARM_RESET = 40.0
+ALARM_RECOVERY_S = 3.0
+ALARM_SENSOR_STALE_S = 1.0
 
 # De draaiknop (potmeter) geeft een getal van 0 tot 1023. Als de knop precies op de grens
 # tussen bijv. cijfer 4 en 5 staat, kan het getal door kleine stroomschommelingen (ruis)
@@ -118,6 +124,9 @@ class VaultState:
         self.loiter_since = None        # monotonic tijdstip waarop iemand dichtbij kwam staan
         self.last_activity = 0.0        # laatste draai of knopdruk (monotonic)
         self.alarm_reason = ""
+        self.alarm_requires_perimeter = False
+        self.alarm_safe_since = None
+        self.sensor_ts = None
         self.unlock_executed = False    # Stappenmotor 1x draaien per ontgrendeling
         self.lock_executed = True       # Stappenmotor 1x terugdraaien per vergrendeling
         self.alarm_notified = False     # ntfy push 1x per alarm
@@ -126,3 +135,44 @@ class VaultState:
         self.lockout_until = 0.0        # monotonic tijdstip waarop de wachtperiode eindigt
         self.lockout_push_pending = False   # ntfy push 1x versturen bij start wachtperiode
         self.lockout_siren_pending = False  # korte sirene 1x afspelen bij start wachtperiode
+
+    def alarm_conditions_safe(self, now):
+        if (
+            self.motor_busy
+            or self.sensor_ts is None
+            or not 0 <= now - self.sensor_ts < ALARM_SENSOR_STALE_S
+            or not math.isfinite(self.temp_c)
+            or not math.isfinite(self.lux)
+            or self.temp_c > TEMP_ALARM_RESET_C
+            or not 0 <= self.lux <= LUX_ALARM_RESET
+        ):
+            return False
+        if self.alarm_requires_perimeter:
+            return (
+                0 <= now - self.perimeter_ts < PERIMETER_STALE_S
+                and math.isfinite(self.perimeter_cm)
+                and self.perimeter_cm >= LOITER_DISTANCE_CM
+            )
+        return True
+
+    def update_alarm_recovery(self, now, sensor_ts):
+        # Aanroepen onder state.lock; een meetonderbreking wist de herstelperiode.
+        if (
+            self.sensor_ts is None
+            or sensor_ts is None
+            or sensor_ts - self.sensor_ts >= ALARM_SENSOR_STALE_S
+        ):
+            self.alarm_safe_since = None
+        self.sensor_ts = sensor_ts
+        if self.mode != "ALARM" or not self.alarm_conditions_safe(now):
+            self.alarm_safe_since = None
+        elif self.alarm_safe_since is None:
+            self.alarm_safe_since = now
+
+    def alarm_reset_allowed(self, now):
+        return (
+            self.mode == "ALARM"
+            and self.alarm_conditions_safe(now)
+            and self.alarm_safe_since is not None
+            and now - self.alarm_safe_since >= ALARM_RECOVERY_S
+        )

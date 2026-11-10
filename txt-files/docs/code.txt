@@ -119,7 +119,7 @@ The button and relay use digital GPIO levels; the button is active-low with a pu
 
 | Thread | Frequency | Task |
 | --- | --- | --- |
-| Button | 50 Hz | Debounced edge detection. In PIN_INPUT, adds the selected digit and checks the code after three digits. In ALARM or UNLOCKED, the button resets to PIN_INPUT; it has no effect in LOCKOUT. |
+| Button | 50 Hz | Debounced edge detection. In PIN_INPUT, adds the selected digit and checks the code after three digits. In UNLOCKED, closes the vault. In ALARM, resets only after stable safe readings; it has no effect in LOCKOUT. |
 | Sensors-OLED | 10 Hz | Reads the potentiometer (with hysteresis), LM35 (median of 5), and BH1750; evaluates fire, tampering, and loitering; refreshes the OLED. |
 | Actuators | ~30 Hz | Runs motor movements, updates the RGB LED, and plays the siren according to the current mode. |
 | Cloud | 2 Hz, telemetry every 15 s | Sends ntfy pushes (alarm, lockout) and ThingSpeak telemetry. |
@@ -134,7 +134,7 @@ All threads share one VaultState. Mutations happen under state.lock. The ADC use
 | PIN_INPUT | Startup, reset, or after lockout | Blue light, motor unpowered; potentiometer selects 0-9 and button confirms |
 | VOICE_2FA | Correct PIN (voice bypass disabled) | Orange light; Vosk listens for the passphrase for 20 s, then returns to PIN_INPUT |
 | UNLOCKED | Both factors accepted | Green light; relay on, stepper opens |
-| ALARM | Fire, tampering, or loitering | Red/off blink, siren, ntfy push; button resets |
+| ALARM | Fire, tampering, or loitering | Red/off blink, siren, ntfy push; button resets only after safe recovery |
 | LOCKOUT | Three incorrect PINs | Dim red, 10-second wait, push notification, and siren |
 
 ## Safety logic
@@ -158,6 +158,8 @@ All threads share one VaultState. Mutations happen under state.lock. The ADC use
 - MCP3008: SPI0, CS GPIO 25; channel 0 = potentiometer, channel 1 = LM35 (10 mV per degree Celsius).
 
 - Alarm push: immediately on the first alarm, then no more than once every 2 minutes while ALARM remains active. Reset does not clear the cooldown. Configured by ALARM_PUSH_INTERVAL_S; siren and lockout notifications are unchanged.
+
+- Alarm reset: requires 3 seconds of valid readings at or below 28 C and 40 lux, with no motor movement. Local readings must be less than 1 second old. Loitering alarms also require a finite distance of at least 40 cm, less than 10 seconds old. Unsafe readings or sensor interruptions restart recovery. Until reset is allowed, the OLED shows a blocked reset and the siren stays active.
 
 - BH1750: I2C address 0x23; set once to continuous high-resolution mode (command 0x10), then read. Lux = raw value / 1.2.
 

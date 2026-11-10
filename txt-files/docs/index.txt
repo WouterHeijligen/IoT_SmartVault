@@ -17,7 +17,7 @@ main.py starts button, sensor/display, actuator, and cloud workers that share on
 
 - Wrong PIN: the OLED shows how many attempts remain and the LED runs the warning blink for 3 seconds. After 3 wrong codes the vault is locked for 10 seconds, plays a short siren and sends one ntfy push notification.
 
-- Alarm: a temperature above the fire threshold, or light inside a closed vault, starts the alarm: warning light, repeating siren and push notification. The button resets it.
+- Alarm: a temperature above the fire threshold, or light inside a closed vault, starts the alarm: warning light, repeating siren and push notification. The button resets it only after stable safe readings; until then the siren remains active. See the alarm reset conditions in docs\code.html.
 
 - Telemetry: every 15 seconds light, temperature, perimeter distance and vault status are published to ThingSpeak.
 

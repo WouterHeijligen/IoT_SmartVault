@@ -49,7 +49,8 @@
         plays a short siren and sends one ntfy push notification.</li>
       <li><strong>Alarm:</strong> a temperature above the fire threshold, or light inside a closed vault,
         starts the alarm: warning light, repeating siren and push notification.
-        The button resets it.</li>
+        The button resets it only after stable safe readings; until then the siren remains active.
+        See the <a href="code.html">alarm reset conditions</a>.</li>
       <li><strong>Telemetry:</strong> every 15 seconds light, temperature, perimeter distance and
         vault status are published to ThingSpeak.</li>
     </ol>

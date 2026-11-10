@@ -121,8 +121,10 @@ def thread_button():
       * GOED -> We gaan door naar stap 2 (`VOICE_2FA`, of direct `UNLOCKED` als bypass aan staat).
       * FOUT -> Je krijgt een foutmelding. Na 3 fouten gaat de kluis in `LOCKOUT` (wachttijd)
                 en sturen we een pushbericht + sirene!
-    - In modus `UNLOCKED` of `ALARM`:
-      Een druk op de knop sluit de kluis weer (of reset het alarm) terug naar `PIN_INPUT`.
+    - In modus `UNLOCKED`:
+      Een druk op de knop sluit de kluis weer terug naar `PIN_INPUT`.
+    - In modus `ALARM`:
+      Resetten naar `PIN_INPUT` kan alleen na een stabiele, veilige herstelperiode.
     """
     last_pressed = False
 
@@ -177,7 +179,9 @@ def thread_button():
                     elif state.mode == "LOCKOUT":
                         print("[AUTH] Wachtperiode actief, invoer geblokkeerd.")
 
-                    # --- SITUATIE C: Kluis is open of in alarm -> knop drukken = sluiten / resetten ---
+                    elif state.mode == "ALARM" and not state.alarm_reset_allowed(time.monotonic()):
+                        print("[ALARM] Reset geblokkeerd: wacht op stabiele, veilige metingen.")
+
                     elif state.mode in ("UNLOCKED", "ALARM"):
                         if state.mode == "UNLOCKED":
                             # Zorg dat de motor-thread weet dat het slot weer dichtgedraaid moet worden
@@ -187,6 +191,8 @@ def thread_button():
                         state.entered_pin = []
                         state.failed_attempts = 0
                         state.alarm_reason = ""
+                        state.alarm_requires_perimeter = False
+                        state.alarm_safe_since = None
                         state.alarm_notified = False
                         state.unlock_executed = False
 
@@ -285,7 +291,11 @@ def thread_sensors_and_display():
                         print(f"[LOITER] Persoon > {LOITER_ALARM_S:.0f}s zonder actie voor de kluis!")
                         state.mode = "ALARM"
                         state.alarm_reason = "LOITER > 1 MIN"
+                        state.alarm_requires_perimeter = True
                         state.loiter_since = None
+
+                state.update_alarm_recovery(nu, sensors.laatste_lux_ts)
+                alarm_veilig = state.alarm_reset_allowed(nu)
 
                 # Maak een kopietje (snapshot) van alle waarden voor het OLED-scherm,
                 # zodat we het slotje (`state.lock`) weer snel kunnen loslaten.
@@ -318,7 +328,7 @@ def thread_sensors_and_display():
                 loitering=loitering,
                 reason=reason,
                 voice_passphrase=VOICE_PASSPHRASE,
-                alarm_veilig=(temp_c <= TEMP_FIRE_THRESHOLD_C and lux <= LUX_SABOTAGE_THRESHOLD),
+                alarm_veilig=alarm_veilig,
                 toon_fout=toon_fout,
                 pogingen_over=pogingen_over,
                 wachttijd_s=wachttijd_s,
@@ -326,6 +336,9 @@ def thread_sensors_and_display():
             )
 
         except Exception as e:
+            with state.lock:
+                state.sensor_ts = None
+                state.alarm_safe_since = None
             print(f"[FOUT in Sensor/OLED Thread]: {e}")
 
         # Wacht 0,10 seconde (10 keer per seconde verversen)
@@ -578,6 +591,8 @@ def on_perimeter_afstand(dist_cm):
         state.perimeter_cm = dist_cm
         state.perimeter_ts = time.monotonic()
         state.loitering_alert = (dist_cm < LOITER_DISTANCE_CM)
+        if state.alarm_requires_perimeter and not state.alarm_conditions_safe(state.perimeter_ts):
+            state.alarm_safe_since = None
 
 
 # ==============================================================================

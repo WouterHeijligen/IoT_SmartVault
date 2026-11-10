@@ -16,6 +16,7 @@ class DisplayTests(unittest.TestCase):
         )
         self.busio = Mock()
         self.driver = Mock()
+        self.draw = Mock()
         namespace = dict(
             board=types.SimpleNamespace(D16=16, D6=6, D21=21, D20=20),
             busio=self.busio,
@@ -24,6 +25,8 @@ class DisplayTests(unittest.TestCase):
             ),
             adafruit_ssd1306=self.driver,
             ImageFont=Mock(),
+            Image=Mock(),
+            ImageDraw=Mock(Draw=Mock(return_value=self.draw)),
         )
         exec(compile(ast.Module(body=[display_class], type_ignores=[]),
                      "display.py", "exec"), namespace)
@@ -65,6 +68,25 @@ class DisplayTests(unittest.TestCase):
         self.busio.SPI.return_value.deinit.assert_called_once_with()
         display.oled_dc.deinit.assert_called_once_with()
         display.oled_reset.deinit.assert_called_once_with()
+
+    def test_alarm_screen_only_offers_reset_when_recovery_allows_it(self):
+        display = self.Display()
+        display.oled.width = 128
+        display.oled.height = 64
+        for safe, message in (
+            (False, "Reset geblokkeerd"),
+            (True, "Veilig -> Druk=Reset"),
+        ):
+            with self.subTest(safe=safe):
+                self.draw.reset_mock()
+                display.toon_kluisscherm(
+                    mode="ALARM", lux=10, temp_c=25, digit=0, pin_so_far=[],
+                    loitering=False, reason="BRAND", voice_passphrase="",
+                    alarm_veilig=safe,
+                )
+                self.draw.text.assert_any_call(
+                    (6, 46), message, font=display.font, fill=255
+                )
 
 
 if __name__ == "__main__":
